@@ -118,7 +118,7 @@ for i in range(g.num_workers):
         import tensorflow.python.keras.callbacks as cbks
 
 g.flush_all_inorder()
-g.pprint_unique(conf)
+# g.pprint_unique(conf)
 g.flush_all_inorder()
 g.comm.Barrier()
 
