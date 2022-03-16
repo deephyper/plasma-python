@@ -12,8 +12,10 @@ from plasma.utils.state_reset import reset_states
 # Keras "Using TensorFlow backend" stderr messages do not interfere in stdout
 from plasma.conf import conf
 from mpi4py import MPI
-from pkg_resources import parse_version, get_distribution
 import random
+import itertools
+from packaging import version
+import contextlib
 '''
 #########################################################
 This file trains a deep learning model to predict
@@ -32,7 +34,6 @@ import time
 import datetime
 import numpy as np
 
-from tensorflow.python.client import timeline
 from functools import partial
 from copy import deepcopy
 # import socket
@@ -57,7 +58,6 @@ if g.backend == 'tf' or g.backend == 'tensorflow':
         os.environ['CUDA_VISIBLE_DEVICES'] = '{}'.format(g.MY_GPU)
         # ,mode=NanGuardMode'
     os.environ['KERAS_BACKEND'] = 'tensorflow'  # default setting
-    g.tf_ver = parse_version(get_distribution('tensorflow').version)
     # compat/compat.py first committed on 2018-06-29 for Py 2 vs 3
     # (around, but not present in, the release of v1.9.0)
     # v2 compatiblity code added, then moved from compat.py in Nov and Dec 2018
@@ -65,37 +65,60 @@ if g.backend == 'tf' or g.backend == 'tensorflow':
     # But many TF deprecation warnings in 1.14.0, e.g.:
     # "The name tf.GPUOptions is deprecated. Please use tf.compat.v1.GPUOptions
     # instead". See tf_export.py
-    if g.tf_ver >= parse_version('1.14.0'):
-        import tensorflow.compat.v1 as tf
-    else:
-        import tensorflow as tf
+    # if g.tf_ver >= parse_version('1.14.0'):
+    #     import tensorflow.compat.v1 as tf
+    # else:
+    import tensorflow as tf
+    g.tf_ver = tf.__version__ # setting g.tf_ver moved after the import Summer 2021
     # TODO(KGF): above, builder.py (bug workaround), mpi_launch_tensorflow.py,
     # and runner.py are the only files that import tensorflow directly
 
-    from tensorflow.keras.backend import set_session
+    # from tensorflow.keras.backend import set_session
     # KGF: next 3 lines dump many TensorFlow diagnostics to stderr.
     # All MPI ranks first "Successfully opened dynamic library libcuda"
     # then, one by one: ID GPU, libcudart, libcublas, libcufft, ...
     # Finally, "Device interconnect StreamExecutor with strength 1 edge matrix"
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.95,
-                                allow_growth=True)
-    config = tf.ConfigProto(gpu_options=gpu_options)
-    set_session(tf.Session(config=config))
+    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.95,
+    #                             allow_growth=True)
+    # config = tf.ConfigProto(gpu_options=gpu_options)
+    # set_session(tf.Session(config=config))
     g.flush_all_inorder()
 else:
-    sys.exit('Invalid Keras backend specified')
+    sys.exit('Invalid Keras backend specified !! {}'.format(g.backend))
 for i in range(g.num_workers):
     g.comm.Barrier()
     if i == g.task_index:
         print('[{}] importing Keras'.format(g.task_index))
-        import tensorflow.keras.backend as K
+        # bf16
+        if g.bfloat16 == 'keras':
+            print('Running in BFloat16 Via Keras')
+            from tensorflow.keras.mixed_precision import experimental as mixed_precision
+            policy = mixed_precision.Policy('mixed_bfloat16')
+            mixed_precision.set_policy(policy)
+        elif g.bfloat16 == 'amp':
+            print('Running in BFloat16 via AutoMixedPrecisionMkl')
+            import tensorflow as tf
+            from tensorflow.core.protobuf import rewriter_config_pb2
+            from tensorflow.python.keras import backend as K
+
+            graph_options = tf.compat.v1.GraphOptions(
+                        rewrite_options=rewriter_config_pb2.RewriterConfig(
+                        auto_mixed_precision_mkl=rewriter_config_pb2.RewriterConfig.ON))
+
+            session_conf = tf.compat.v1.ConfigProto(graph_options = graph_options)
+            sess = tf.compat.v1.Session(config=session_conf)
+            K.set_session(sess)
+        else:
+            import tensorflow.keras.backend as K
+
+
         from tensorflow.keras.utils import Progbar
         # TODO(KGF): instead of tensorflow.keras.callbacks.CallbackList()
         # until API added in tf-nightly in v2.2.0
         import tensorflow.python.keras.callbacks as cbks
 
 g.flush_all_inorder()
-g.pprint_unique(conf)
+# g.pprint_unique(conf)
 g.flush_all_inorder()
 g.comm.Barrier()
 
@@ -256,9 +279,9 @@ class MPIModel():
             SGD, Adam, RMSprop, Nadam
             )
         if optimizer == 'sgd':
-            optimizer_class = SGD(lr=self.DUMMY_LR, clipnorm=clipnorm)
+            optimizer_class = SGD(learning_rate=self.DUMMY_LR, clipnorm=clipnorm)
         elif optimizer == 'momentum_sgd':
-            optimizer_class = SGD(lr=self.DUMMY_LR, clipnorm=clipnorm,
+            optimizer_class = SGD(learning_rate=self.DUMMY_LR, clipnorm=clipnorm,
                                   decay=1e-6, momentum=0.9)
         elif optimizer == 'tf_momentum_sgd':
             # TODO(KGF): removed TFOptimizer wrapper from here and below
@@ -267,27 +290,19 @@ class MPIModel():
             optimizer_class = tf.train.MomentumOptimizer(
                 learning_rate=self.DUMMY_LR, momentum=0.9)
         elif optimizer == 'adam':
-            optimizer_class = Adam(lr=self.DUMMY_LR, clipnorm=clipnorm)
+            optimizer_class = Adam(learning_rate=self.DUMMY_LR, clipnorm=clipnorm)
         elif optimizer == 'tf_adam':
             optimizer_class = tf.train.AdamOptimizer(
                 learning_rate=self.DUMMY_LR)
         elif optimizer == 'rmsprop':
-            optimizer_class = RMSprop(lr=self.DUMMY_LR, clipnorm=clipnorm)
+            optimizer_class = RMSprop(learning_rate=self.DUMMY_LR, clipnorm=clipnorm)
         elif optimizer == 'nadam':
-            optimizer_class = Nadam(lr=self.DUMMY_LR, clipnorm=clipnorm)
+            optimizer_class = Nadam(learning_rate=self.DUMMY_LR, clipnorm=clipnorm)
         else:
             print("Optimizer not implemented yet")
             exit(1)
 
-        # Timeline profiler
-        if (self.conf is not None
-                and conf['training']['timeline_prof']):
-            self.run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            self.run_metadata= tf.RunMetadata()
-            self.model.compile(optimizer=optimizer_class, loss=loss,
-                               options=self.run_options, run_metadata=self.run_metadata)
-        else:
-            self.model.compile(optimizer=optimizer_class, loss=loss)
+        self.model.compile(optimizer=optimizer_class, loss=loss)
 
         self.ensure_equal_weights()
 
@@ -474,6 +489,11 @@ class MPIModel():
                 patience=patience, monitor=monitor, mode=mode)]
         if "lr_scheduler" in callbacks_list:
             pass
+        # if conf['training']['timeline_prof']:
+        #     tb_callback = tf.keras.callbacks.TensorBoard(
+        #         log_dir="./logs", profile_batch=(10, 15),
+        #         update_freq=1,)
+        #     callbacks += [tb_callback]
 
         return cbks.CallbackList(callbacks)
 
@@ -527,10 +547,6 @@ class MPIModel():
         loss_averager = Averager()
         t_start = time.time()
 
-        timeline_prof = False
-        if (self.conf is not None
-                and conf['training']['timeline_prof']):
-            timeline_prof = True
         step_limit = 0
         if (self.conf is not None
                 and conf['training']['step_limit'] > 0):
@@ -546,38 +562,61 @@ class MPIModel():
 
         while ((self.num_so_far - self.epoch * num_total) < num_total
                or step < self.num_batches_minimum):
-            if step_limit > 0 and step > step_limit:
-                print('reached step limit')
-                break
-            try:
-                (batch_xs, batch_ys, batches_to_reset, num_so_far_curr,
-                 num_total, is_warmup_period) = next(batch_iterator_func)
-            except StopIteration:
-                g.print_unique("Resetting batch iterator.")
-                self.num_so_far_accum = self.num_so_far_indiv
-                self.set_batch_iterator_func()
-                batch_iterator_func = self.batch_iterator_func
-                (batch_xs, batch_ys, batches_to_reset, num_so_far_curr,
-                 num_total, is_warmup_period) = next(batch_iterator_func)
-            self.num_so_far_indiv = self.num_so_far_accum + num_so_far_curr
+            # TODO(KGF): this is still not correctly tracing the steps on CPU
+            if version.parse(g.tf_ver) >= version.parse('2.2.0'):
+                # TensorFlow profiler added in April 2020, TF 2.2.0
+                cm = tf.profiler.experimental.Trace('train', step_num=step, _r=1)
+            else:
+                cm = contextlib.nullcontext()
+            with cm:
+                if step_limit > 0 and step > step_limit:
+                    print('reached step limit')
+                    break
+                try:
+                    (batch_xs, batch_ys, batches_to_reset, num_so_far_curr,
+                     num_total, is_warmup_period) = next(batch_iterator_func)
+                except StopIteration:
+                    g.print_unique("Resetting batch iterator.")
+                    self.num_so_far_accum = self.num_so_far_indiv
+                    self.set_batch_iterator_func()
+                    batch_iterator_func = self.batch_iterator_func
+                    (batch_xs, batch_ys, batches_to_reset, num_so_far_curr,
+                     num_total, is_warmup_period) = next(batch_iterator_func)
+                self.num_so_far_indiv = self.num_so_far_accum + num_so_far_curr
 
-            # if batches_to_reset:
-            # self.model.reset_states(batches_to_reset)
+                # if batches_to_reset:
+                # self.model.reset_states(batches_to_reset)
 
-            warmup_phase = (step < self.warmup_steps and self.epoch == 0)
-            num_replicas = 1 if warmup_phase else self.num_replicas
+                warmup_phase = (step < self.warmup_steps and self.epoch == 0)
+                num_replicas = 1 if warmup_phase else self.num_replicas
 
-            self.num_so_far = self.mpi_sum_scalars(
-                self.num_so_far_indiv, num_replicas)
+                self.num_so_far = self.mpi_sum_scalars(
+                    self.num_so_far_indiv, num_replicas)
 
-            # run the model once to force compilation. Don't actually use these
-            # values.
-            if first_run:
-                first_run = False
-                t0_comp = time.time()
-                #   print('input_dimension:',batch_xs.shape)
-                #   print('output_dimension:',batch_ys.shape)
-                _, _ = self.train_on_batch_and_get_deltas(
+                # run the model once to force compilation. Don't actually use these
+                # values.
+                if first_run:
+                    first_run = False
+                    t0_comp = time.time()
+                    #   print('input_dimension:',batch_xs.shape)
+                    #   print('output_dimension:',batch_ys.shape)
+                    _, _ = self.train_on_batch_and_get_deltas(
+                        batch_xs, batch_ys, verbose)
+                    self.comm.Barrier()
+                    sys.stdout.flush()
+                    # TODO(KGF): check line feed/carriage returns around this
+                    g.print_unique('\nCompilation finished in {:.2f}s'.format(
+                        time.time() - t0_comp))
+                    t_start = time.time()
+                    sys.stdout.flush()
+
+                if np.any(batches_to_reset):
+                    reset_states(self.model, batches_to_reset)
+                if ('noise' in self.conf['training'].keys()
+                        and self.conf['training']['noise'] is not False):
+                    batch_xs = self.add_noise(batch_xs)
+                t0 = time.time()
+                deltas, loss = self.train_on_batch_and_get_deltas(
                     batch_xs, batch_ys, verbose)
                 self.comm.Barrier()
                 sys.stdout.flush()
@@ -615,15 +654,6 @@ class MPIModel():
                     + 'walltime: {:.4f} | '.format(
                         time.time() - self.start_time))
                 g.write_unique(write_str + write_str_0)
-
-                if timeline_prof:
-                    # dump profile
-                    tl = timeline.Timeline(self.run_metadata.step_stats)
-                    ctf = tl.generate_chrome_trace_format()
-                    # dump file per iteration
-                    with open('timeline_%s.json' % step, 'w') as f:
-                        f.write(ctf)
-
                 step += 1
             else:
                 g.write_unique('\r[{}] warmup phase, num so far: {}'.format(
@@ -757,8 +787,27 @@ def mpi_make_predictions(conf, shot_list, loader, custom_path=None):
     if g.task_index != 0:
         loader.verbose = False
 
+    # MPI loop works by predicting in batches of the
+    # largest possible multiple of len(shot_sublists) < num_workers
+    # i.e. if there are 9 shot_sublists and 4 workers,
+    #      worker 0 will predict shot_sublist 0, 4, and 8
+    #      workers 1-3 will predict shot_sublist 1-3 and 5-7 respectively
+    # each makes their prediction on the ith iteration of the loop
+    #      (i.e. worker 0 predicts shot_sublist 0 on loop iteration i=0)
+    #      and then skips through loop iterations unless it has to predict again (i=4)
+    #      or aggregate predictions with other workers, after each worker has made a prediction
+    #      which happens every num_workers iterations in the for loop
+    #      (i.e. worker 0 will aggregate predictions with workers 1-3 at the end of i=3)
+    # During the aggregation step, each worker is uses its color (which denotes whether it was
+    # predicting or not predicting during the last few runs of the for loop) to split the main comm
+    # The predictors (color = 1) share their predictions with first each other, and then to everyone
+    # the nonpredictors (color = 2) only recieve the global predictions from the predictors
+    color = 2
     for (i, shot_sublist) in enumerate(shot_sublists):
+        shpz = []
+        max_length = -1 # So non shot predictive workers don't have a real length
         if i % g.num_workers == g.task_index:
+            color = 1
             X, y, shot_lengths, disr = loader.load_as_X_y_pred(shot_sublist)
 
             # load data and fit on data
@@ -774,19 +823,64 @@ def mpi_make_predictions(conf, shot_list, loader, custom_path=None):
             y_prime += y_p
             y_gold += y
             disruptive += disr
-            # print_all('\nFinished with i = {}'.format(i))
 
         if (i % g.num_workers == g.num_workers - 1
                 or i == len(shot_sublists) - 1):
+            # Create numpy block from y list which is used in MPI
+            # Pads y_prime and y_gold with zeros to maximum shot length within block being transferred
+            if color ==1:
+                shpz = [max(y.shape) for y in y_prime]
+                max_length = max([max(y.shape) for y in y_p])
+            max_length = g.comm.allreduce(max_length, MPI.MAX)
+            if color == 1:
+                y_prime_numpy = np.stack([np.pad(sublist, pad_width=((0,max_length-max(sublist.shape)),(0,0))) for sublist in y_prime])
+                y_gold_numpy = np.stack([np.pad(sublist, pad_width=((0,max_length-max(sublist.shape)),(0,0))) for sublist in y_gold])
+
+            temp_predictor_only_comm = MPI.Comm.Split(g.comm, color, i)
+            # Create numpy array to store all processors output, then aggregate and unpad using MPI gathered shape list
+            shpzg = g.comm.allgather(shpz)
+            shpzg = list(itertools.chain(*shpzg))
+            shpzg = [s for s in shpzg if s != []]
+            max_length = g.comm.allreduce(max_length, MPI.MAX)
+            if color == 1:
+                num_pred = temp_predictor_only_comm.size
+            else:
+                num_pred = g.comm.size - temp_predictor_only_comm.size
+            y_primeg = np.zeros((num_pred*conf['model']['pred_batch_size'],max_length,1), dtype=conf['data']['floatx'])
+            y_goldg  = np.zeros((num_pred*conf['model']['pred_batch_size'],max_length,1), dtype=conf['data']['floatx'])
+            y_primeg_flattend = np.zeros(y_primeg.flatten().shape)
+            y_goldg_flattend  = np.zeros(y_goldg.flatten().shape)
+            if color == 1:
+                # Ensure that numpy arrays have correct dimensions before gathering them
+                assert num_pred*max(y_prime_numpy.flatten().shape) == max(y_primeg_flattend.shape)
+                assert num_pred*max(y_gold_numpy.flatten().shape) == max(y_goldg_flattend.shape)
+                temp_predictor_only_comm.Allgather(y_prime_numpy.flatten(), y_primeg_flattend)
+                temp_predictor_only_comm.Allgather(y_gold_numpy.flatten(), y_goldg_flattend)
+            # Process 0 broadcast y_primeg and y_goldg to all processors, including ones
+            # not involved in calculating predictions so they can each create their own
+            # y_prime_global and y_gold_global
             g.comm.Barrier()
-            y_prime_global += concatenate_sublists(g.comm.allgather(y_prime))
-            y_gold_global += concatenate_sublists(g.comm.allgather(y_gold))
+            g.comm.Bcast(y_primeg_flattend, root=0)
+            g.comm.Bcast(y_goldg_flattend, root=0)
+            y_primeg_flattend = np.split(y_primeg_flattend, num_pred)
+            y_goldg_flattend = np.split(y_goldg_flattend, num_pred)
+            y_primeg = [y.reshape((conf['model']['pred_batch_size'], max_length, 1)) for y in y_primeg_flattend]
+            y_goldg = [y.reshape((conf['model']['pred_batch_size'], max_length, 1)) for y in y_goldg_flattend]
+            y_primeg = np.concatenate(y_primeg, axis=0)
+            y_goldg  = np.concatenate(y_goldg, axis=0)
+            # Unpad each shot to its true length
+            for idx, s in enumerate(shpzg):
+                trim = lambda nparry, s: nparry[0:int(s),:]
+                y_prime_global.append(trim(y_primeg[idx],s))
+                y_gold_global.append(trim(y_goldg[idx], s))
+
             disruptive_global += concatenate_sublists(
                 g.comm.allgather(disruptive))
-            g.comm.Barrier()
             y_prime = []
             y_gold = []
             disruptive = []
+            color = 2
+            temp_predictor_only_comm.Free()
 
         if g.task_index == 0:
             pbar.add(1.0*len(shot_sublist))
@@ -843,7 +937,7 @@ def mpi_train(conf, shot_list_train, shot_list_validate, loader,
     conf['num_workers'] = g.comm.Get_size()
 
     specific_builder = builder.ModelBuilder(conf)
-    if g.tf_ver >= parse_version('1.14.0'):
+    if version.parse(g.tf_ver) >= version.parse('1.14.0'):
         # Internal TensorFlow flags, subject to change (v1.14.0+ only?)
         try:
             from tensorflow.python.util import module_wrapper as depr
@@ -911,7 +1005,7 @@ def mpi_train(conf, shot_list_train, shot_list_validate, loader,
         tensorboard_save_path = conf['paths']['tensorboard_save_path']
         write_grads = conf['callbacks']['write_grads']
         tensorboard = TensorBoard(log_dir=tensorboard_save_path,
-                                  histogram_freq=1, write_graph=True,
+                                  histogram_freq=1, # write_graph=True,
                                   write_grads=write_grads)
         tensorboard.set_model(mpi_model.model)
         # TODO(KGF): check addition of TF model summary write added from fork
@@ -937,6 +1031,9 @@ def mpi_train(conf, shot_list_train, shot_list_validate, loader,
     else:
         best_so_far = np.inf
         cmp_fn = min
+
+    # if conf['training']['timeline_prof']:
+    #     tf.profiler.experimental.start('./logs')
 
     while e < num_epochs:
         g.write_unique('\nBegin training from epoch {:.2f}/{}'.format(
@@ -1044,6 +1141,8 @@ def mpi_train(conf, shot_list_train, shot_list_validate, loader,
         if stop_training:
             g.write_unique("Stopping training due to early stopping")
             break
+    # if conf['training']['timeline_prof']:
+    #     tf.profiler.experimental.stop()
 
     if g.task_index == 0:
         callbacks.on_train_end()
@@ -1064,25 +1163,24 @@ def get_stop_training(callbacks):
 
 class TensorBoard(object):
     def __init__(self, log_dir='./logs', histogram_freq=0, validation_steps=0,
-                 write_graph=True, write_grads=False):
+                 # write_graph=True,
+                 write_grads=False):
         if K.backend() != 'tensorflow':
             raise RuntimeError('TensorBoard callback only works '
                                'with the TensorFlow backend.')
         self.log_dir = log_dir
         self.histogram_freq = histogram_freq
-        self.merged = None
         self.writer = None
-        self.write_graph = write_graph
+        # self.write_graph = write_graph
         self.write_grads = write_grads
         self.validation_steps = validation_steps
-        self.sess = None
         self.model = None
 
     def set_model(self, model):
         self.model = model
-        self.sess = K.get_session()
 
-        if self.histogram_freq and self.merged is None:
+        # TODO(KGF): check removal of cond "&& self.merged is None"
+        if self.histogram_freq:
             for layer in self.model.layers:
                 for weight in layer.weights:
                     mapped_weight_name = weight.name.replace(':', '_')
@@ -1099,82 +1197,22 @@ class TensorBoard(object):
                             tf.summary.histogram(
                                 '{}_grad'.format(mapped_weight_name), grad)
 
+                # KGF: Skip writing layer output histograms in TF 2.x, for now?
                 if hasattr(layer, 'output'):
                     tf.summary.histogram('{}_out'.format(layer.name),
                                          layer.output)
-        self.merged = tf.summary.merge_all()
 
-        if self.write_graph:
-            self.writer = tf.summary.FileWriter(self.log_dir,
-                                                self.sess.graph)
-        else:
-            self.writer = tf.summary.FileWriter(self.log_dir)
+        self.writer = tf.summary.create_file_writer(self.log_dir)
 
     def on_epoch_end(self, val_generator, val_steps, epoch, logs=None):
         logs = logs or {}
 
+        # KGF: val_roc, val_loss, train_loss
         for name, value in logs.items():
             if name in ['batch', 'size']:
                 continue
-            summary = tf.Summary()
-            summary_value = summary.value.add()
-            summary_value.simple_value = value.item()
-            summary_value.tag = name
-            self.writer.add_summary(summary, epoch)
+            tf.summary.scalar(name, value, step=epoch)
             self.writer.flush()
-
-        # KGF: targets attribute of Model class moved to private in tf.keras
-        tensors = (self.model.inputs + self.model._targets
-                   )  # + self.model.sample_weights)
-        # KGF: tf.keras results in sample_weights = None. Dont pass it
-        # since we use equal weights, anyway
-
-        # KGF: former external Keras API returns the following
-        # print(type(self.model.uses_learning_phase))
-        # <class 'bool'>
-        # print(self.model.uses_learning_phase)
-        # True
-        # "True if the layer has a different behavior in training mode and
-        # test mode"
-
-        # No longer necessary to check backend-dependent flag (eliminated)
-        # https://stackoverflow.com/questions/52295852/what-is-uses-learning-phase-in-keras
-        # if self.model.uses_learning_phase:
-            # print(type(K.learning_phase()))
-            # <class 'tensorflow.python.framework.ops.Tensor'>
-            # print(K.learning_phase())
-            # Tensor("keras_learning_phase:0", shape=(), dtype=bool)
-        # KGF: This indicates that TensorFlow is set to training at this point,
-        # but we zip K.learning_phase() as the key with '1' as the value below
-        # when building our feed_dict, which indicates testing (appropriate for
-        # this TensorBoard evaluation of the validation set accuracy
-        tensors += [K.learning_phase()]
-
-        self.sess = K.get_session()
-
-        for val_data in val_generator:
-            batch_val = []
-            # sh = val_data[0].shape[0]
-            #
-            # 3x numpy arrays matching input, targets, sample_weights tensors
-            # + 1x bool flag if any layer in model takes a train vs. test flag
-            batch_val.append(val_data[0])
-            batch_val.append(val_data[1])
-            # batch_val.append(np.ones(sh))  # equal weights
-
-            # TODO(KGF): confirm that this flag check can be skipped. See above
-            # if self.model.uses_learning_phase:
-            batch_val.append(1)
-            # Things may break if there is no layer in model that uses this flg
-            # E.g. if all Dropout, BatchNorm layers are missing
-
-            feed_dict = dict(zip(tensors, batch_val))
-            result = self.sess.run([self.merged], feed_dict=feed_dict)
-            summary_str = result[0]
-            self.writer.add_summary(summary_str, int(round(epoch)))
-            val_steps -= 1
-            if val_steps <= 0:
-                break
 
     def on_train_end(self):
         self.writer.close()
