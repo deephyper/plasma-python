@@ -12,9 +12,9 @@ import copy
 
 base_params = {
     'fs_path': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/dataset/',
-    'user_subdir': True,
+    'user_subdir': False,
     'fs_path_output': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/exp/outputs/',
-    'user_subdir_output': True,
+    'user_subdir_output': False,
     'target': 'hinge',
     'num_gpus': 1,
     'paths': {
@@ -25,7 +25,6 @@ base_params = {
         'specific_signals': [],
         'executable': 'mpi_learn.py',
         'shallow_executable': 'learn.py',
-        'saved_shotlist_path': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/dataset/jgouneau/processed_shotlists/jet_0D/shot_lists_signal_group_274046652389426782036862662489435313687.npz',
     },
     'data': {
         'bleed_in': 0,
