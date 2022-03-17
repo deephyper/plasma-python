@@ -18,7 +18,7 @@ conf_file = None
 def init_MPI():
     from mpi4py import MPI
     global comm, task_index, num_workers
-    comm = MPI.COMM_WORLD
+    comm = MPI.COMM_SELF
     task_index = comm.Get_rank()
     num_workers = comm.Get_size()
 
