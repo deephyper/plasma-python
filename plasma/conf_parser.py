@@ -131,7 +131,7 @@ base_params = {
         'monitor': 'val_roc',
         'patience': 5,
         'write_grads': False,
-        'monitor_test': True,
+        'monitor_test': False,
         'monitor_times': [30, 70, 200, 500, 1000],
     },
     'env': {

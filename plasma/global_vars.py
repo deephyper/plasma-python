@@ -74,8 +74,7 @@ def write_unique(write_str):
     # from non-interactive Slurm batch jobs. Convert these to true Unix
     # line feeds / newlines (^J, \n) when we can detect such a stdout
     if task_index == 0:
-        sys.stdout.write(write_str)
-        sys.stdout.flush()
+        logging.info(write_str)
 
 
 def write_all(write_str):
@@ -83,11 +82,8 @@ def write_all(write_str):
 
     No MPI barriers, no guaranteed ordering of output.
     '''
-    if comm is not None:
-        sys.stdout.write('[{}] '.format(task_index) + write_str)
-    else:
-        sys.stdout.write(write_str)
-    sys.stdout.flush()
+    if task_index == 0:
+        logging.info(write_str)
 
 
 def flush_all_inorder(stdout=True, stderr=True):

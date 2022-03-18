@@ -440,7 +440,6 @@ class MPIModel():
         Currently used callbacks include: BaseLogger, CSVLogger, EarlyStopping.
         Other possible callbacks to add in future: RemoteMonitor,
         LearningRateScheduler
-
         Argument list:
         - conf: There is a "callbacks" section in conf.yaml file.
 
@@ -469,20 +468,24 @@ class MPIModel():
 
         '''
 
-        mode = conf['callbacks']['mode']
-        monitor = conf['callbacks']['monitor']
-        patience = conf['callbacks']['patience']
+        # mode = conf['callbacks']['mode']
+        # monitor = conf['callbacks']['monitor']
+        # patience = conf['callbacks']['patience']
+        mode = "max"
+        monitor = "val_roc"
+        patience = "5"
         csvlog_save_path = conf['paths']['csvlog_save_path']
         # CSV callback is on by default
         if not os.path.exists(csvlog_save_path):
             os.makedirs(csvlog_save_path)
 
         callbacks_list = conf['callbacks']['list']
-        callbacks = [cbks.BaseLogger()]
-        callbacks += [self.history]
-        callbacks += [cbks.CSVLogger("{}callbacks-{}.log".format(
-            csvlog_save_path,
-            datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")))]
+        callbacks = []
+        # callbacks = [cbks.BaseLogger()]
+        # callbacks += [self.history]
+        # callbacks += [cbks.CSVLogger("{}callbacks-{}.log".format(
+        #     csvlog_save_path,
+        #     datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")))]
 
         if "earlystop" in callbacks_list:
             callbacks += [cbks.EarlyStopping(
@@ -674,6 +677,8 @@ class MPIModel():
         return (step, ave_loss, curr_loss, self.num_so_far, effective_epochs)
 
     def estimate_remaining_time(self, time_so_far, work_so_far, work_total):
+        # time_so_far: time since the beggining of the training
+        # work_so_far: 
         eps = 1e-6
         total_time = 1.0*time_so_far*work_total/(work_so_far + eps)
         return total_time - time_so_far
@@ -967,6 +972,7 @@ def mpi_train(conf, shot_list_train, shot_list_validate, loader,
 
     # load the latest epoch we did. Returns 0 if none exist yet
     e = specific_builder.load_model_weights(train_model)
+    e = 0
     e_old = e
 
     num_epochs = conf['training']['num_epochs']
@@ -1051,8 +1057,8 @@ def mpi_train(conf, shot_list_train, shot_list_validate, loader,
 
         # TODO(KGF): add diagnostic about "saving to epoch X"?
         loader.verbose = False  # True during the first iteration
-        if g.task_index == 0:
-            specific_builder.save_model_weights(train_model, int(round(e)))
+        # if g.task_index == 0:
+        #     specific_builder.save_model_weights(train_model, int(round(e)))
 
         if conf['training']['no_validation']:
             break
