@@ -1,5 +1,6 @@
 from __future__ import print_function
 import sys
+import logging
 
 # global variable defaults for non-MPI runs
 comm = None
@@ -43,9 +44,9 @@ def init_GPU_backend(conf):
 
 
 def pprint_unique(obj):
-    from pprint import pprint
+    from pprint import pformat
     if task_index == 0:
-        pprint(obj)
+        logging.info(pformat(obj))
 
 
 def print_unique(print_output, end='\n', flush=False):
@@ -56,7 +57,7 @@ def print_unique(print_output, end='\n', flush=False):
     """
     # TODO(KGF): maybe only allow end='','\r','\n' to prevent bugs?
     if task_index == 0:
-        print(print_output, end=end, flush=flush)
+        logging.info(print_output)
 
 
 def write_unique(write_str):
