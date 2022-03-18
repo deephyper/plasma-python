@@ -13,9 +13,9 @@ import copy
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 base_params = {
-    'fs_path': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/dataset/',
+    'fs_path': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/dataset',
     'user_subdir': False,
-    'fs_path_output': os.path.join(HERE, '../exp/outputs/'),
+    'fs_path_output': os.path.join(HERE, '../exp/outputs'),
     'user_subdir_output': False,
     'target': 'hinge',
     'num_gpus': 1,
