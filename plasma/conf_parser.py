@@ -110,7 +110,7 @@ base_params = {
         'batch_size': 128,
         'max_patch_length': 100000,
         'num_shots_at_once': 200,
-        'num_epochs': 1000,
+        'num_epochs': 10,
         'use_mock_data': False,
         'data_parallel': False,
         'hyperparam_tuning': False,
