@@ -123,9 +123,7 @@ base_params = {
     },
     'callbacks': {
         'list': ['earlystop'],
-        'metrics': ['val_loss',
-        'val_roc',
-        'train_loss'],
+        'metrics': ['val_loss', 'val_roc', 'train_loss'],
         'mode': 'max',
         'monitor': 'val_roc',
         'patience': 5,
@@ -154,6 +152,7 @@ def modify_config(config):
         params['model']['dense_regularization'] = config['dense_regularization']
         params['model']['lr'] = config['lr']
         params['model']['lr_decay'] = config['lr_decay']
+        params['model']["momentum"] = config['momentum']
         params['model']['dropout_prob'] = config['dropout_prob']
         params['training']['batch_size'] = config['batch_size']
 
