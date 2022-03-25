@@ -10,11 +10,13 @@ import os
 import getpass
 import copy
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+
 base_params = {
-    'fs_path': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/dataset/',
-    'user_subdir': True,
-    'fs_path_output': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/exp/outputs/',
-    'user_subdir_output': True,
+    'fs_path': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/dataset',
+    'user_subdir': False,
+    'fs_path_output': os.path.join(HERE, '../exp/outputs'),
+    'user_subdir_output': False,
     'target': 'hinge',
     'num_gpus': 1,
     'paths': {
@@ -25,7 +27,6 @@ base_params = {
         'specific_signals': [],
         'executable': 'mpi_learn.py',
         'shallow_executable': 'learn.py',
-        'saved_shotlist_path': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/dataset/jgouneau/processed_shotlists/jet_0D/shot_lists_signal_group_274046652389426782036862662489435313687.npz',
     },
     'data': {
         'bleed_in': 0,
@@ -109,7 +110,7 @@ base_params = {
         'batch_size': 128,
         'max_patch_length': 100000,
         'num_shots_at_once': 200,
-        'num_epochs': 1000,
+        'num_epochs': 10,
         'use_mock_data': False,
         'data_parallel': False,
         'hyperparam_tuning': False,
@@ -128,7 +129,7 @@ base_params = {
         'monitor': 'val_roc',
         'patience': 5,
         'write_grads': False,
-        'monitor_test': True,
+        'monitor_test': False,
         'monitor_times': [30, 70, 200, 500, 1000],
     },
     'env': {

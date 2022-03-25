@@ -1,6 +1,6 @@
 import numpy as np
 from mpi4py import MPI
-comm = MPI.COMM_WORLD
+comm = MPI.COMM_SELF
 
 # define a float16 mpi datatype
 mpi_float16 = MPI.BYTE.Create_contiguous(2).Commit()

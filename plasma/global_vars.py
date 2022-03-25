@@ -1,11 +1,12 @@
 from __future__ import print_function
 import sys
+import logging
 
 # global variable defaults for non-MPI runs
 comm = None
 task_index = 0
 num_workers = 1
-NUM_GPUS = 0
+NUM_GPUS = 1
 MY_GPU = 0
 # TODO(KGF): remove this (and all?) references to Keras backend
 backend = ''
@@ -18,7 +19,7 @@ conf_file = None
 def init_MPI():
     from mpi4py import MPI
     global comm, task_index, num_workers
-    comm = MPI.COMM_WORLD
+    comm = MPI.COMM_SELF
     task_index = comm.Get_rank()
     num_workers = comm.Get_size()
 
@@ -43,9 +44,9 @@ def init_GPU_backend(conf):
 
 
 def pprint_unique(obj):
-    from pprint import pprint
+    from pprint import pformat
     if task_index == 0:
-        pprint(obj)
+        logging.info(pformat(obj))
 
 
 def print_unique(print_output, end='\n', flush=False):
@@ -56,7 +57,7 @@ def print_unique(print_output, end='\n', flush=False):
     """
     # TODO(KGF): maybe only allow end='','\r','\n' to prevent bugs?
     if task_index == 0:
-        print(print_output, end=end, flush=flush)
+        logging.info(print_output)
 
 
 def write_unique(write_str):
@@ -73,8 +74,7 @@ def write_unique(write_str):
     # from non-interactive Slurm batch jobs. Convert these to true Unix
     # line feeds / newlines (^J, \n) when we can detect such a stdout
     if task_index == 0:
-        sys.stdout.write(write_str)
-        sys.stdout.flush()
+        logging.info(write_str)
 
 
 def write_all(write_str):
@@ -82,11 +82,8 @@ def write_all(write_str):
 
     No MPI barriers, no guaranteed ordering of output.
     '''
-    if comm is not None:
-        sys.stdout.write('[{}] '.format(task_index) + write_str)
-    else:
-        sys.stdout.write(write_str)
-    sys.stdout.flush()
+    if task_index == 0:
+        logging.info(write_str)
 
 
 def flush_all_inorder(stdout=True, stderr=True):

@@ -54,8 +54,8 @@ def get_ps_host(base_port, num_ps, num_workers, task_id):
 
 def get_mpi_cluster_server_jobname(num_ps=1, num_workers=None):
     import tensorflow as tf
-    NUM_GPUS = 4
-    comm = MPI.COMM_WORLD
+    NUM_GPUS = 1
+    comm = MPI.COMM_SELF
     task_index = comm.Get_rank()
     task_num = comm.Get_size()
     num_hosts = len(get_host_list(1))
@@ -138,8 +138,8 @@ def get_mpi_cluster_server_jobname(num_ps=1, num_workers=None):
 
 
 def get_mpi_task_index(num_workers=None):
-    NUM_GPUS = 4
-    comm = MPI.COMM_WORLD
+    NUM_GPUS = 1
+    comm = MPI.COMM_SELF
     task_index = comm.Get_rank()
     task_num = comm.Get_size()
     num_hosts = len(get_host_list(1))
