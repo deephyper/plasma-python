@@ -44,6 +44,23 @@ class Loader(object):
     def set_inference_mode(self, val):
         self.normalizer.set_inference_mode(val)
 
+    def get_steps_per_epoch(self, shot_list):
+        steps_per_epoch = 0
+        batch_size = self.conf['training']['batch_size']
+        num_at_once = self.conf['training']['num_shots_at_once']
+        shot_sublists = shot_list.sublists(num_at_once, equal_size=True)
+        for shot_sublist in shot_sublists:
+            # produce a list of equal-length chunks from this set of shots
+            X_list, _ = self.load_as_X_y_list(shot_sublist)
+            # Each chunk will be a multiple of the batch size
+            for X in X_list:
+                num_examples = X.shape[0]
+                assert num_examples % batch_size == 0
+                num_chunks = num_examples//batch_size
+                for _ in range(num_chunks):
+                    steps_per_epoch += 1
+        return steps_per_epoch
+
     def training_batch_generator(self, shot_list):
         """The method implements a training batch generator as a Python
         generator with a while-loop.  It iterates indefinitely over the
@@ -103,8 +120,7 @@ class Loader(object):
                         end = (k + 1)*batch_size
                         num_so_far += 1.0 * \
                             len(shot_sublist)/(len(X_list)*num_chunks)
-                        yield X[start:end], y[start:end], reset_states_now,
-                        num_so_far, num_total
+                        yield X[start:end], y[start:end] #, reset_states_now, num_so_far, num_total
             epoch += 1
 
     def fill_training_buffer(self, Xbuff, Ybuff, end_indices, shot,
