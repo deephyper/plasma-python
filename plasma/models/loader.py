@@ -57,8 +57,7 @@ class Loader(object):
                 num_examples = X.shape[0]
                 assert num_examples % batch_size == 0
                 num_chunks = num_examples//batch_size
-                for _ in range(num_chunks):
-                    steps_per_epoch += 1
+                steps_per_epoch += num_chunks
         return steps_per_epoch
 
     def training_batch_generator(self, shot_list):
