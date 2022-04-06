@@ -21,13 +21,13 @@ base_params = {
     'target': 'hinge',
     'num_gpus': 1,
     'paths': {
-        # 'signal_prepath': '/signal_data/',
-        'signal_prepath': ['/signal_data/', '/signal_data_new_nov2019/'],
+        'signal_prepath': '/signal_data/',
+        # 'signal_prepath': ['/signal_data/', '/signal_data_new_nov2019/'],
         'shot_list_dir': '/shot_lists/',
         'tensorboard_save_path': '/Graph/',
         # 'data': 'jet_0D',
-        # 'data': 'd3d_all',
-        'data': 'd3d_2019',
+        'data': 'd3d_all',
+        # 'data': 'd3d_2019',
         'specific_signals': [],
         'executable': 'mpi_learn.py',
         'shallow_executable': 'learn.py',
@@ -99,8 +99,8 @@ base_params = {
         'dense_regularization': 0.001,
         'lr': 2e-05,
         'lr_decay': 0.97,
-        # 'stateful': True,
-        'stateful': False,
+        'stateful': True,
+        # 'stateful': False,
         'return_sequences': True,
         'dropout_prob': 0.1,
         'warmup_steps': 0,
@@ -115,7 +115,7 @@ base_params = {
         'batch_size': 128,
         'max_patch_length': 100000,
         'num_shots_at_once': 200,
-        'num_epochs': 1,
+        'num_epochs': 30,
         'use_mock_data': False,
         'data_parallel': False,
         'hyperparam_tuning': False,
@@ -148,9 +148,11 @@ base_params = {
 def modify_config(config):
     params = copy.deepcopy(base_params)
     if config is not None :
-        params['model']['pred_length'] = config['pred_length']
-        params['model']['pred_batch_size'] = config['pred_batch_size']
+        fs_path = config.get("fs_path", None)
+        if fs_path is not None:
+            params['fs_path'] = fs_path
         params['model']['length'] = config['length']
+        params['model']['pred_length'] = config['length']
         params['model']['rnn_size'] = config['rnn_size']
         params['model']['rnn_layers'] = config['rnn_layers']
         params['model']['num_conv_filters'] = config['num_conv_filters']
@@ -163,6 +165,7 @@ def modify_config(config):
         params['model']["momentum"] = config['momentum']
         params['model']['dropout_prob'] = config['dropout_prob']
         params['training']['batch_size'] = config['batch_size']
+        params['model']['pred_batch_size'] = config['batch_size']
 
     return params
 
