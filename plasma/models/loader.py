@@ -14,6 +14,8 @@ import numpy as np
 from plasma.primitives.shots import Shot
 import multiprocessing as mp
 
+import time
+
 # import pdb
 
 
@@ -45,20 +47,55 @@ class Loader(object):
         self.normalizer.set_inference_mode(val)
 
     def get_steps_per_epoch(self, shot_list):
-        steps_per_epoch = 0
+        num_steps = 0
         batch_size = self.conf['training']['batch_size']
         num_at_once = self.conf['training']['num_shots_at_once']
         shot_sublists = shot_list.sublists(num_at_once, equal_size=True)
         for shot_sublist in shot_sublists:
-            # produce a list of equal-length chunks from this set of shots
             X_list, _ = self.load_as_X_y_list(shot_sublist)
-            # Each chunk will be a multiple of the batch size
             for X in X_list:
                 num_examples = X.shape[0]
                 assert num_examples % batch_size == 0
                 num_chunks = num_examples//batch_size
-                steps_per_epoch += num_chunks
-        return steps_per_epoch
+                num_steps += num_chunks
+        return num_steps
+
+    # def get_steps_per_epoch(self, shot_list):
+    #     batch_size = self.conf['training']['batch_size']
+    #     # length = self.conf['model']['length']
+    #     sig, res = self.get_signal_result_from_shot(shot_list.shots[0])
+    #     Xbuff = np.empty((batch_size,) + sig.shape,
+    #                      dtype=self.conf['data']['floatx'])
+    #     Ybuff = np.empty((batch_size,) + res.shape,
+    #                      dtype=self.conf['data']['floatx'])
+    #     end_indices = np.zeros(batch_size, dtype=np.int)
+    #     num_steps = 0
+    #     is_first_fill = num_steps < batch_size
+
+    #     t_sample_shot_from_list_given_index = 0
+    #     t_return_from_training_buffer = 0
+    #     t_fill_training_buffer = 0
+
+    #     for i in range(len(shot_list)):
+    #         t = time.time()
+    #         shot = self.sample_shot_from_list_given_index(shot_list, i)
+    #         t_sample_shot_from_list_given_index += time.time() - t
+    #         while not np.any(end_indices == 0):
+    #             t = time.time()
+    #             X, Y = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
+    #             t_return_from_training_buffer += time.time() - t
+    #             num_steps += 1
+    #             is_first_fill = num_steps < batch_size
+
+    #         t = time.time()
+    #         Xbuff, Ybuff, batch_idx = self.fill_training_buffer(Xbuff, Ybuff, end_indices, shot, is_first_fill)
+    #         t_fill_training_buffer += time.time() - t
+        
+    #     print(f"t_sample_shot_from_list_given_index: {t_sample_shot_from_list_given_index}")
+    #     print(f"t_return_from_training_buffer: {t_return_from_training_buffer}")
+    #     print(f"t_fill_training_buffer: {t_fill_training_buffer}")
+    #     return num_steps
+
 
     def training_batch_generator(self, shot_list):
         """The method implements a training batch generator as a Python
@@ -122,9 +159,12 @@ class Loader(object):
                         yield X[start:end], y[start:end] #, reset_states_now, num_so_far, num_total
             epoch += 1
 
-    def fill_training_buffer(self, Xbuff, Ybuff, end_indices, shot,
-                             is_first_fill=False):
+    def fill_training_buffer(self, Xbuff, Ybuff, end_indices, shot, is_first_fill=False):
+        t = time.time()
         sig, res = self.get_signal_result_from_shot(shot)
+        print(f"t_get_signal_result_from_shot: {time.time() - t}")
+
+        t = time.time()
         length = self.conf['model']['length']
         if is_first_fill:  # cut signal to random position
             # KGF: why random position?
@@ -145,6 +185,7 @@ class Loader(object):
         Ybuff[batch_idx, :sig_len, :] = res[-sig_len:]
         end_indices[batch_idx] += sig_len
         # print("Filling buffer at index {}".format(batch_idx))
+        print(f"t_fill_training_buffer_rest: {time.time() - t}")
         return Xbuff, Ybuff, batch_idx
 
     def return_from_training_buffer(self, Xbuff, Ybuff, end_indices):
@@ -271,12 +312,9 @@ class Loader(object):
         """
         batch_size = self.conf['training']['batch_size']
         sig, res = self.get_signal_result_from_shot(shot_list.shots[0])
-        Xbuff = np.empty((batch_size,) + sig.shape,
-                         dtype=self.conf['data']['floatx'])
-        Ybuff = np.empty((batch_size,) + res.shape,
-                         dtype=self.conf['data']['floatx'])
-        Maskbuff = np.empty((batch_size,) + res.shape,
-                            dtype=self.conf['data']['floatx'])
+        Xbuff = np.empty((batch_size,) + sig.shape, dtype=self.conf['data']['floatx'])
+        Ybuff = np.empty((batch_size,) + res.shape, dtype=self.conf['data']['floatx'])
+        Maskbuff = np.empty((batch_size,) + res.shape, dtype=self.conf['data']['floatx'])
         # epoch = 0
         num_total = len(shot_list)
         num_so_far = 0
@@ -308,8 +346,7 @@ class Loader(object):
                 batch_idx += 1
                 if batch_idx == batch_size:
                     num_so_far += batch_size
-                    yield (1.0*Xbuff, 1.0*Ybuff, 1.0*Maskbuff, num_so_far,
-                           num_total)
+                    yield (1.0*Xbuff, 1.0*Ybuff, 1.0*Maskbuff, num_so_far, num_total)
                     batch_idx = 0
 
     def sample_shot_from_list_given_index(self, shot_list, i):
@@ -350,7 +387,7 @@ class Loader(object):
         Ybuff = np.empty((batch_size,) + res.shape,
                          dtype=self.conf['data']['floatx'])
         end_indices = np.zeros(batch_size, dtype=np.int)
-        batches_to_reset = np.ones(batch_size, dtype=np.bool)
+        batches_to_reset = np.ones(batch_size, dtype=np.int)
         # epoch = 0
         num_total = len(shot_list)
         num_so_far = 0
@@ -362,32 +399,19 @@ class Loader(object):
         while True:
             # the list of all shots
             shot_list.shuffle()
-            for i in range(len(shot_list)):
-                if self.conf['training']['ranking_difficulty_fac'] == 1.0:
-                    if self.conf['data']['equalize_classes']:
-                        shot = shot_list.sample_equal_classes()
-                    else:
-                        # TODO(KGF): test my merge of the "jdev" branch for the
-                        # following line into this set of conditionals
-                        shot = self.sample_shot_from_list_given_index(
-                            shot_list, i)
-                        # shot = shot_list.shots[i]
-                else:  # draw the shot weighted
-                    shot = shot_list.sample_weighted()
+            for i, shot in enumerate(shot_list):
+                shot = self.sample_shot_from_list_given_index(shot_list, i)
                 while not np.any(end_indices == 0):
-                    X, Y = self.return_from_training_buffer(
-                        Xbuff, Ybuff, end_indices)
-                    yield (X, Y, batches_to_reset, num_so_far, num_total,
-                           is_warmup_period)
+                    X, Y = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
+                    yield X, batches_to_reset, Y # (X, batches_to_reset.reshape((batch_size, 1))), Y #, num_so_far, num_total, is_warmup_period)
                     returned = True
                     num_steps += 1
                     is_warmup_period = num_steps < warmup_steps
                     is_first_fill = num_steps < batch_size
-                    batches_to_reset[:] = False
+                    batches_to_reset[:] = 0
 
-                Xbuff, Ybuff, batch_idx = self.fill_training_buffer(
-                    Xbuff, Ybuff, end_indices, shot, is_first_fill)
-                batches_to_reset[batch_idx] = True
+                Xbuff, Ybuff, batch_idx = self.fill_training_buffer(Xbuff, Ybuff, end_indices, shot, is_first_fill)
+                batches_to_reset[batch_idx] = 1
                 if returned and not is_warmup_period:
                     num_so_far += 1
             # epoch += 1
@@ -511,13 +535,11 @@ class Loader(object):
         if self.normalizer is not None:
             self.normalizer.apply(shot)
         else:
-            print('Warning, no normalization. ',
-                  'Training data may be poorly conditioned')
+            print('Warning, no normalization. ', 'Training data may be poorly conditioned')
 
         if self.conf['training']['use_mock_data']:
             signal, ttd = self.get_mock_data()
-        ttd, signal = shot.get_data_arrays(
-            use_signals, self.conf['data']['floatx'])
+        ttd, signal = shot.get_data_arrays(use_signals, self.conf['data']['floatx'])
         if len(ttd) < self.conf['model']['length']:
             print(ttd)
             print(shot)
