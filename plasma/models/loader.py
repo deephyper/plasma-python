@@ -43,59 +43,152 @@ class Loader(object):
         self.normalizer = normalizer
         self.verbose = True
 
+
+
+    def get_steps_per_epoch_bis(self, shot_list):
+        batch_size = self.conf['training']['batch_size']
+        sig, res = self.get_signal_result_from_shot(shot_list.shots[0])
+        Xbuff = np.empty((batch_size,) + sig.shape,
+                         dtype=self.conf['data']['floatx'])
+        Ybuff = np.empty((batch_size,) + res.shape,
+                         dtype=self.conf['data']['floatx'])
+        end_indices = np.zeros(batch_size, dtype=np.int)
+        num_steps=0
+        head=0
+        count = 0
+        total = 0
+        for i, shot in enumerate(shot_list):
+            shot = self.sample_shot_from_list_given_index(shot_list, i)
+            while not np.any(end_indices == 0):
+                X, Y, Xbuff, Ybuff, head = self.return_from_training_buffer_bis(Xbuff, Ybuff, head, end_indices)
+                num_steps += 1
+                count += np.sum(Y)
+                total += np.size(Y)
+            Xbuff, Ybuff, batch_idx = self.fill_training_buffer_bis(Xbuff, Ybuff, head, end_indices, shot)
+        prop = count/total
+        true_prop = (prop + 1)/2
+        print(f"proportion: {true_prop}")
+        return num_steps
+
+    def training_batch_generator_partial_reset_bis(self, shot_list):
+        batch_size = self.conf['training']['batch_size']
+        # length = self.conf['model']['length']
+        sig, res = self.get_signal_result_from_shot(shot_list.shots[0])
+        Xbuff = np.empty((batch_size,) + sig.shape,
+                         dtype=self.conf['data']['floatx'])
+        Ybuff = np.empty((batch_size,) + res.shape,
+                         dtype=self.conf['data']['floatx'])
+        end_indices = np.zeros(batch_size, dtype=np.int)
+        batches_to_reset = np.ones(batch_size, dtype=np.int)
+        while True:
+            # the list of all shots
+            shot_list.shuffle()
+            head=0
+            for i, shot in enumerate(shot_list):
+                shot = self.sample_shot_from_list_given_index(shot_list, i)
+                while not np.any(end_indices == 0):
+                    X, Y, Xbuff, Ybuff, head = self.return_from_training_buffer_bis(Xbuff, Ybuff, head, end_indices)
+                    # X, Y = self.return_from_training_buffer_bis(Xbuff, Ybuff, end_indices)
+                    yield X, batches_to_reset, Y
+                    batches_to_reset[:] = 0
+
+                Xbuff, Ybuff, batch_idx = self.fill_training_buffer_bis(Xbuff, Ybuff, head, end_indices, shot)
+                batches_to_reset[batch_idx] = 1    
+
+    def fill_training_buffer_bis(self, Xbuff, Ybuff, head, end_indices, shot):
+        sig, res = self.get_signal_result_from_shot(shot)
+
+        length = self.conf['model']['length']
+
+        sig_len = res.shape[0]
+        sig_len = (sig_len // length)*length  # make divisible by length
+        assert sig_len > 0
+        buff_len = Xbuff.shape[1]
+        if sig_len > buff_len:
+            buff_len = sig_len+length
+            Xbuff = self.resize_buffer_bis(Xbuff, head, buff_len)
+            Ybuff = self.resize_buffer_bis(Ybuff, head, buff_len)
+        batch_idx = np.where(end_indices == 0)[0][0]
+        if buff_len-head >= sig_len:
+            Xbuff[batch_idx, head:head+sig_len] = sig[-sig_len:]
+            Ybuff[batch_idx, head:head+sig_len] = res[-sig_len:]
+        else:
+            cut = head+sig_len-buff_len
+            Xbuff[batch_idx, head:] = sig[-sig_len:-cut]
+            Ybuff[batch_idx, head:] = res[-sig_len:-cut]
+            Xbuff[batch_idx, :cut] = sig[-cut:]
+            Ybuff[batch_idx, :cut] = res[-cut:]
+            
+        end_indices[batch_idx] += sig_len
+        return Xbuff, Ybuff, batch_idx
+
+    def return_from_training_buffer_bis(self, Xbuff, Ybuff, head, end_indices):
+        length = self.conf['model']['length']
+        if head+length > Xbuff.shape[1]:
+            head = 0
+        end_indices -= length
+        assert np.all(end_indices >= 0)
+        X = 1.0*Xbuff[:, head:head+length]
+        Y = 1.0*Ybuff[:, head:head+length]
+        head+=length
+        return X, Y, Xbuff, Ybuff, head
+
+    def resize_buffer_bis(self, buff, head, new_length, dtype=None):
+        if dtype is None:
+            dtype = self.conf['data']['floatx']
+        batch_size = buff.shape[0]
+        old_length = buff.shape[1]
+        num_signals = buff.shape[2]
+
+        new_buff = np.zeros((batch_size, new_length, num_signals), dtype=dtype)
+
+        new_buff[:, :old_length] = buff
+        overhead = new_length-old_length
+        if overhead >= head:
+            new_buff[:, old_length:old_length+head] = buff[:, :head]
+        else:
+            new_buff[:, old_length:] = buff[:, :overhead]
+            new_buff[:, :head-overhead] = buff[:, overhead:head]
+
+        return new_buff
+
+
+
     def set_inference_mode(self, val):
         self.normalizer.set_inference_mode(val)
 
-    def get_steps_per_epoch(self, shot_list):
-        num_steps = 0
-        batch_size = self.conf['training']['batch_size']
-        num_at_once = self.conf['training']['num_shots_at_once']
-        shot_sublists = shot_list.sublists(num_at_once, equal_size=True)
-        for shot_sublist in shot_sublists:
-            X_list, _ = self.load_as_X_y_list(shot_sublist)
-            for X in X_list:
-                num_examples = X.shape[0]
-                assert num_examples % batch_size == 0
-                num_chunks = num_examples//batch_size
-                num_steps += num_chunks
-        return num_steps
-
     # def get_steps_per_epoch(self, shot_list):
-    #     batch_size = self.conf['training']['batch_size']
-    #     # length = self.conf['model']['length']
-    #     sig, res = self.get_signal_result_from_shot(shot_list.shots[0])
-    #     Xbuff = np.empty((batch_size,) + sig.shape,
-    #                      dtype=self.conf['data']['floatx'])
-    #     Ybuff = np.empty((batch_size,) + res.shape,
-    #                      dtype=self.conf['data']['floatx'])
-    #     end_indices = np.zeros(batch_size, dtype=np.int)
     #     num_steps = 0
-    #     is_first_fill = num_steps < batch_size
-
-    #     t_sample_shot_from_list_given_index = 0
-    #     t_return_from_training_buffer = 0
-    #     t_fill_training_buffer = 0
-
-    #     for i in range(len(shot_list)):
-    #         t = time.time()
-    #         shot = self.sample_shot_from_list_given_index(shot_list, i)
-    #         t_sample_shot_from_list_given_index += time.time() - t
-    #         while not np.any(end_indices == 0):
-    #             t = time.time()
-    #             X, Y = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
-    #             t_return_from_training_buffer += time.time() - t
-    #             num_steps += 1
-    #             is_first_fill = num_steps < batch_size
-
-    #         t = time.time()
-    #         Xbuff, Ybuff, batch_idx = self.fill_training_buffer(Xbuff, Ybuff, end_indices, shot, is_first_fill)
-    #         t_fill_training_buffer += time.time() - t
-        
-    #     print(f"t_sample_shot_from_list_given_index: {t_sample_shot_from_list_given_index}")
-    #     print(f"t_return_from_training_buffer: {t_return_from_training_buffer}")
-    #     print(f"t_fill_training_buffer: {t_fill_training_buffer}")
+    #     batch_size = self.conf['training']['batch_size']
+    #     num_at_once = self.conf['training']['num_shots_at_once']
+    #     shot_sublists = shot_list.sublists(num_at_once, equal_size=True)
+    #     for shot_sublist in shot_sublists:
+    #         X_list, _ = self.load_as_X_y_list(shot_sublist)
+    #         for X in X_list:
+    #             num_examples = X.shape[0]
+    #             assert num_examples % batch_size == 0
+    #             num_chunks = num_examples//batch_size
+    #             num_steps += num_chunks
     #     return num_steps
 
+    def get_steps_per_epoch(self, shot_list):
+        batch_size = self.conf['training']['batch_size']
+        sig, res = self.get_signal_result_from_shot(shot_list.shots[0])
+        Xbuff = np.empty((batch_size,) + sig.shape,
+                         dtype=self.conf['data']['floatx'])
+        Ybuff = np.empty((batch_size,) + res.shape,
+                         dtype=self.conf['data']['floatx'])
+        end_indices = np.zeros(batch_size, dtype=np.int)
+        
+        num_steps = 0
+        for i in range(len(shot_list)):
+            shot = self.sample_shot_from_list_given_index(shot_list, i)
+            while not np.any(end_indices == 0):
+                X, Y, Xbuff, Ybuff = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
+                # X, Y = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
+                num_steps += 1
+            Xbuff, Ybuff, batch_idx = self.fill_training_buffer(Xbuff, Ybuff, end_indices, shot)
+        return num_steps
 
     def training_batch_generator(self, shot_list):
         """The method implements a training batch generator as a Python
@@ -128,11 +221,11 @@ class Loader(object):
             # reused to make them equal length).
             shot_sublists = shot_list.sublists(num_at_once, equal_size=True)
             num_total = len(shot_list)
-            for (i, shot_sublist) in enumerate(shot_sublists):
+            for shot_sublist in shot_sublists:
                 # produce a list of equal-length chunks from this set of shots
                 X_list, y_list = self.load_as_X_y_list(shot_sublist)
                 # Each chunk will be a multiple of the batch size
-                for j, (X, y) in enumerate(zip(X_list, y_list)):
+                for X, y in zip(X_list, y_list):
                     num_examples = X.shape[0]
                     assert num_examples % batch_size == 0
                     num_chunks = num_examples//batch_size
@@ -154,25 +247,21 @@ class Loader(object):
                         reset_states_now = (k == 0)
                         start = k*batch_size
                         end = (k + 1)*batch_size
-                        num_so_far += 1.0 * \
-                            len(shot_sublist)/(len(X_list)*num_chunks)
+                        num_so_far += 1.0 * len(shot_sublist)/(len(X_list)*num_chunks)
                         yield X[start:end], y[start:end] #, reset_states_now, num_so_far, num_total
             epoch += 1
 
     def fill_training_buffer(self, Xbuff, Ybuff, end_indices, shot, is_first_fill=False):
-        t = time.time()
         sig, res = self.get_signal_result_from_shot(shot)
-        print(f"t_get_signal_result_from_shot: {time.time() - t}")
 
-        t = time.time()
         length = self.conf['model']['length']
-        if is_first_fill:  # cut signal to random position
-            # KGF: why random position?
-            # first w.r.t. iteration in an epoch? set by:
-            # num_steps < batch_size
-            cut_idx = np.random.randint(res.shape[0]-length+1)
-            sig = sig[cut_idx:]
-            res = res[cut_idx:]
+        # if is_first_fill:  # cut signal to random position
+        #     # KGF: why random position?
+        #     # first w.r.t. iteration in an epoch? set by:
+        #     # num_steps < batch_size
+        #     cut_idx = res.shape[0]-length #np.random.randint(res.shape[0]-length+1)
+        #     sig = sig[cut_idx:]
+        #     res = res[cut_idx:]
 
         sig_len = res.shape[0]
         sig_len = (sig_len // length)*length  # make divisible by lenth
@@ -181,25 +270,28 @@ class Loader(object):
         if sig_len > Xbuff.shape[1]:
             Xbuff = self.resize_buffer(Xbuff, sig_len+length)
             Ybuff = self.resize_buffer(Ybuff, sig_len+length)
-        Xbuff[batch_idx, :sig_len, :] = sig[-sig_len:]
-        Ybuff[batch_idx, :sig_len, :] = res[-sig_len:]
+        Xbuff[batch_idx, :sig_len] = sig[-sig_len:]
+        Ybuff[batch_idx, :sig_len] = res[-sig_len:]
         end_indices[batch_idx] += sig_len
         # print("Filling buffer at index {}".format(batch_idx))
-        print(f"t_fill_training_buffer_rest: {time.time() - t}")
         return Xbuff, Ybuff, batch_idx
 
     def return_from_training_buffer(self, Xbuff, Ybuff, end_indices):
         length = self.conf['model']['length']
         end_indices -= length
         assert np.all(end_indices >= 0)
-        X = 1.0*Xbuff[:, :length, :]
-        Y = 1.0*Ybuff[:, :length, :]
-        self.shift_buffer(Xbuff, length)
-        self.shift_buffer(Ybuff, length)
-        return X, Y
+        X = 1.0*Xbuff[:, :length]
+        Y = 1.0*Ybuff[:, :length]
+        Xbuff = self.shift_buffer(Xbuff, length)
+        Ybuff = self.shift_buffer(Ybuff, length)
+        # self.shift_buffer(Xbuff, length)
+        # self.shift_buffer(Ybuff, length)
+        return X, Y, Xbuff, Ybuff
 
     def shift_buffer(self, buff, length):
-        buff[:, :-length, :] = buff[:, length:, :]
+        # buff[:, :-length] = buff[:, length:]
+        buff = np.roll(buff, -length, axis=1)
+        return buff
 
     def resize_buffer(self, buff, new_length, dtype=None):
         if dtype is None:
@@ -207,8 +299,12 @@ class Loader(object):
         old_length = buff.shape[1]
         batch_size = buff.shape[0]
         num_signals = buff.shape[2]
+
         new_buff = np.zeros((batch_size, new_length, num_signals), dtype=dtype)
-        new_buff[:, :old_length, :] = buff
+        # new_buff = np.resize((batch_size, new_length, num_signals))
+        # new_buff = np.pad(buff, ((0, 0), (0, new_length-old_length), (0, 0)))
+
+        new_buff[:, :old_length] = buff
         # print("Resizing buffer to new length {}".format(new_length))
         return new_buff
 
@@ -387,34 +483,27 @@ class Loader(object):
         Ybuff = np.empty((batch_size,) + res.shape,
                          dtype=self.conf['data']['floatx'])
         end_indices = np.zeros(batch_size, dtype=np.int)
-        batches_to_reset = np.ones(batch_size, dtype=np.int)
-        # epoch = 0
+        batches_to_reset = np.ones(batch_size, dtype=np.bool)
         num_total = len(shot_list)
         num_so_far = 0
         returned = False
-        num_steps = 0
-        warmup_steps = self.conf['training']['batch_generator_warmup_steps']
-        is_warmup_period = num_steps < warmup_steps
-        is_first_fill = num_steps < batch_size
+        is_warmup_period = False
         while True:
             # the list of all shots
             shot_list.shuffle()
             for i, shot in enumerate(shot_list):
                 shot = self.sample_shot_from_list_given_index(shot_list, i)
                 while not np.any(end_indices == 0):
-                    X, Y = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
-                    yield X, batches_to_reset, Y # (X, batches_to_reset.reshape((batch_size, 1))), Y #, num_so_far, num_total, is_warmup_period)
+                    X, Y, Xbuff, Ybuff = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
+                    # X, Y = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
+                    yield X, Y, batches_to_reset, num_so_far, num_total, is_warmup_period
                     returned = True
-                    num_steps += 1
-                    is_warmup_period = num_steps < warmup_steps
-                    is_first_fill = num_steps < batch_size
-                    batches_to_reset[:] = 0
+                    batches_to_reset[:] = False
 
-                Xbuff, Ybuff, batch_idx = self.fill_training_buffer(Xbuff, Ybuff, end_indices, shot, is_first_fill)
-                batches_to_reset[batch_idx] = 1
-                if returned and not is_warmup_period:
-                    num_so_far += 1
-            # epoch += 1
+                Xbuff, Ybuff, batch_idx = self.fill_training_buffer(Xbuff, Ybuff, end_indices, shot)
+                batches_to_reset[batch_idx] = True
+            if returned:
+                num_so_far += 1
 
     def fill_batch_queue(self, shot_list, queue):
         print("Starting thread to fill queue")
