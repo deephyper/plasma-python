@@ -166,7 +166,6 @@ def modify_config(config):
         params['model']['dropout_prob'] = config['dropout_prob']
         params['training']['batch_size'] = config['batch_size']
         params['model']['pred_batch_size'] = config['batch_size']
-        params['data']['normalizer'] = config['normalizer']
 
     return params
 
