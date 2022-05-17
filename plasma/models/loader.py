@@ -55,19 +55,12 @@ class Loader(object):
         end_indices = np.zeros(batch_size, dtype=np.int)
         num_steps=0
         head=0
-        count = 0
-        total = 0
         for i, shot in enumerate(shot_list):
             shot = self.sample_shot_from_list_given_index(shot_list, i)
             while not np.any(end_indices == 0):
                 X, Y, Xbuff, Ybuff, head = self.return_from_training_buffer_bis(Xbuff, Ybuff, head, end_indices)
                 num_steps += 1
-                count += np.sum(Y)
-                total += np.size(Y)
             Xbuff, Ybuff, batch_idx = self.fill_training_buffer_bis(Xbuff, Ybuff, head, end_indices, shot)
-        prop = count/total
-        true_prop = (prop + 1)/2
-        print(f"proportion: {true_prop}")
         return num_steps
 
     def training_batch_generator_partial_reset_bis(self, shot_list):
@@ -483,7 +476,7 @@ class Loader(object):
         Ybuff = np.empty((batch_size,) + res.shape,
                          dtype=self.conf['data']['floatx'])
         end_indices = np.zeros(batch_size, dtype=np.int)
-        batches_to_reset = np.ones(batch_size, dtype=np.bool)
+        batches_to_reset = np.ones(batch_size, dtype=np.int)
         num_total = len(shot_list)
         num_so_far = 0
         returned = False
@@ -496,12 +489,12 @@ class Loader(object):
                 while not np.any(end_indices == 0):
                     X, Y, Xbuff, Ybuff = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
                     # X, Y = self.return_from_training_buffer(Xbuff, Ybuff, end_indices)
-                    yield X, Y, batches_to_reset, num_so_far, num_total, is_warmup_period
+                    yield X, batches_to_reset, Y #, num_so_far, num_total, is_warmup_period
                     returned = True
-                    batches_to_reset[:] = False
+                    batches_to_reset[:] = 0
 
                 Xbuff, Ybuff, batch_idx = self.fill_training_buffer(Xbuff, Ybuff, end_indices, shot)
-                batches_to_reset[batch_idx] = True
+                batches_to_reset[batch_idx] = 1
             if returned:
                 num_so_far += 1
 
