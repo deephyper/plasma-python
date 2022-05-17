@@ -16,7 +16,7 @@ base_params = {
     # 'fs_path': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/dataset',
     'fs_path': '/lus/theta-fs0/projects/fusiondl_aesp/felker',
     'user_subdir': False,
-    'fs_path_output': '/lus/theta-fs0/projects/datascience/jgouneau/deephyper/frnn/scalable-bo/experiments/thetagpu/jobs/output/frnn/',
+    'fs_path_output': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/exp/run_function_tests/temp/',
     'user_subdir_output': False,
     'target': 'hinge',
     'num_gpus': 1,
@@ -166,6 +166,7 @@ def modify_config(config):
         params['model']['dropout_prob'] = config['dropout_prob']
         params['training']['batch_size'] = config['batch_size']
         params['model']['pred_batch_size'] = config['batch_size']
+        params['data']['normalizer'] = config['normalizer']
 
     return params
 
