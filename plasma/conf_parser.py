@@ -166,6 +166,7 @@ def modify_config(config):
         params['model']['dropout_prob'] = config['dropout_prob']
         params['training']['batch_size'] = config['batch_size']
         params['model']['pred_batch_size'] = config['batch_size']
+        params['target'] = config['loss']
 
     return params
 
@@ -248,7 +249,7 @@ def parameters(config=None):
     params['paths']['processed_prepath'] = (
         base_path + '/processed_shots/' + 'signal_group_{}/'.format(h))
     # ensure shallow model has +1 -1 target.
-    if params['model']['shallow'] or params['target'] == 'hinge':
+    if params['model']['shallow'] or params['target'] in ['hinge', 'focal']:
         params['data']['target'] = HingeTarget
     elif params['target'] == 'maxhinge':
         MaxHingeTarget.fac = params['data']['positive_example_penalty']
