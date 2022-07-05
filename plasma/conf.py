@@ -1,7 +1,7 @@
 from plasma.conf_parser import parameters
-import os
-import errno
-import plasma.global_vars as g
+# import os
+# import errno
+# import plasma.global_vars as g
 
 conf = parameters()
 # TODO(KGF): this conf.py feels like an unnecessary level of indirection

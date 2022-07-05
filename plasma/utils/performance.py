@@ -1,31 +1,31 @@
-from __future__ import print_function
 from plasma.preprocessor.normalize import VarNormalizer as Normalizer
 from plasma.primitives.shots import ShotList  # , Shot
 from scipy import stats
 import numpy as np
 from pprint import pprint
 import os
-import matplotlib
-matplotlib.use('Agg')  # for machines that don't have a display
+# import matplotlib
+# matplotlib.use('Agg')  # for machines that don't have a display
 import matplotlib.pyplot as plt  # noqa
-from matplotlib import rc  # noqa
-rc('font', **{'family': 'serif', 'sans-serif': ['Times']})
-rc('text', usetex=True)
+# from matplotlib import rc  # noqa
+# rc('font', **{'family': 'serif', 'sans-serif': ['Times']})
+# rc('text', usetex=True)
 
 
 class PerformanceAnalyzer():
     def __init__(self, results_dir=None, shots_dir=None, i=0, T_min_warn=None,
-                 T_max_warn=None, verbose=False, pred_ttd=False, conf=None):
+                 T_max_warn=None, ignore_timesteps=0, verbose=False, pred_ttd=False, conf=None):
         self.T_min_warn = T_min_warn
         self.T_max_warn = T_max_warn
-        dt = conf['data']['dt']
-        T_max_warn_def = int(round(conf['data']['T_warning']/dt))
+        self.ignore_timesteps = ignore_timesteps
+        # dt = conf['data']['dt']
+        # T_max_warn_def = int(round(conf['data']['T_warning']/dt))
         # int(round(conf['data']['T_min_warn']/dt))
-        T_min_warn_def = conf['data']['T_min_warn']
-        if T_min_warn is None:
-            self.T_min_warn = T_min_warn_def
-        if T_max_warn is None:
-            self.T_max_warn = T_max_warn_def
+        # T_min_warn_def = conf['data']['T_min_warn']
+        # if T_min_warn is None:
+        #     self.T_min_warn = T_min_warn_def
+        # if T_max_warn is None:
+        #     self.T_max_warn = T_max_warn_def
         if self.T_max_warn < self.T_min_warn:
             # computation of statistics is only correct if T_max_warn is larger
             # than T_min_warn
@@ -36,8 +36,8 @@ class PerformanceAnalyzer():
         self.shots_dir = shots_dir
         self.i = i
         self.pred_ttd = pred_ttd
-        self.saved_conf = conf
-        self.conf = conf
+        # self.saved_conf = conf
+        # self.conf = conf
 
         self.pred_train = None
         self.truth_train = None
@@ -102,10 +102,10 @@ class PerformanceAnalyzer():
 
             early_th_tr, correct_th_tr, late_th_tr, nd_th_tr = (
                 self.get_threshold_arrays(all_preds_tr, all_truths_tr,
-                                          all_disruptive_tr))
+                                          disruptives=all_disruptive_tr))
             early_th_te, correct_th_te, late_th_te, nd_th_te = (
                 self.get_threshold_arrays(all_preds_te, all_truths_te,
-                                          all_disruptive_te))
+                                          disruptives=all_disruptive_te))
             all_thresholds = np.sort(np.concatenate(
                 (early_th_tr, correct_th_tr, late_th_tr, nd_th_tr, early_th_te,
                  correct_th_te, late_th_te, nd_th_te)))
@@ -117,7 +117,7 @@ class PerformanceAnalyzer():
                                      all_disruptive):
         all_disruptive = np.array(all_disruptive)
         early_th, correct_th, late_th, nd_th = self.get_threshold_arrays(
-            all_preds, all_truths, all_disruptive)
+            all_preds, all_truths, disruptives=all_disruptive)
         if self.pred_train is not None:
             p_thresh_range = self.get_p_thresh_range()
         else:
@@ -131,7 +131,7 @@ class PerformanceAnalyzer():
         thresh_quality_range = np.zeros_like(p_thresh_range)
 
         for i, thresh in enumerate(p_thresh_range):
-            correct, accuracy, fp_rate, missed, early_alarm_rate, thresh_quality = (
+            correct, accuracy, fp_rate, missed, early_alarm_rate = (
                 self.get_shot_prediction_stats_from_threshold_arrays(
                     early_th, correct_th, late_th, nd_th, thresh))
             correct_range[i] = correct
@@ -139,11 +139,33 @@ class PerformanceAnalyzer():
             fp_range[i] = fp_rate
             missed_range[i] = missed
             early_alarm_range[i] = early_alarm_rate
-            thresh_quality_range[i] = thresh_quality
-        
-        best_thresh = p_thresh_range[thresh_quality_range.argmax()]
 
-        return correct_range, accuracy_range, fp_range, missed_range, early_alarm_range, best_thresh
+        return correct_range, accuracy_range, fp_range, missed_range, early_alarm_range
+
+    def get_metrics_vs_p_thresh_dh(self, all_preds, all_truths, early_pred_counts=True):
+        early_th, correct_th, late_th, nd_th = self.get_threshold_arrays(
+            all_preds, all_truths)
+        p_thresh_range = np.sort(np.concatenate(
+            (early_th, correct_th, late_th, nd_th)))
+        accuracy_range = np.zeros_like(p_thresh_range)
+        precision_range = np.zeros_like(p_thresh_range)
+        tp_rate_range = np.zeros_like(p_thresh_range)
+        fp_rate_range = np.zeros_like(p_thresh_range)
+        tp_range = np.zeros_like(p_thresh_range)
+        fp_range = np.zeros_like(p_thresh_range)
+
+        for i, thresh in enumerate(p_thresh_range):
+            accuracy, precision, tp_rate, fp_rate, tp, fp = (
+                self.get_shot_prediction_metrics_from_threshold_arrays(
+                    early_th, correct_th, nd_th, thresh, early_pred_counts=early_pred_counts))
+            accuracy_range[i] = accuracy
+            precision_range[i] = precision
+            tp_rate_range[i] = tp_rate
+            fp_rate_range[i] = fp_rate
+            tp_range[i] = tp
+            fp_range[i] = fp
+
+        return p_thresh_range, accuracy_range, precision_range, tp_rate_range, fp_rate_range, tp_range, fp_range
 
     def get_shot_prediction_stats_from_threshold_arrays(
             self, early_th, correct_th, late_th, nd_th, thresh):
@@ -159,14 +181,31 @@ class PerformanceAnalyzer():
         FNs = np.sum(np.logical_and(np.logical_and(
             early_th <= thresh, correct_th <= thresh), late_th <= thresh))
 
-        correct, accuracy, fp_rate, missed, early_alarm_rate, thresh_quality = self.get_accuracy_and_fp_rate_from_stats(
+        correct, accuracy, fp_rate, missed, early_alarm_rate = self.get_accuracy_and_fp_rate_from_stats(
             TPs, FPs, FNs, TNs, earlies, lates)
-        return correct, accuracy, fp_rate, missed, early_alarm_rate, thresh_quality
+        return correct, accuracy, fp_rate, missed, early_alarm_rate
+
+        
+    def get_shot_prediction_metrics_from_threshold_arrays(
+            self, early_th, correct_th, nd_th, thresh, early_pred_counts=True):
+        if early_pred_counts:
+            tp = np.sum(np.logical_or(early_th > thresh, correct_th > thresh))
+            tn = np.sum(nd_th <= thresh)
+            fp = len(nd_th) - tn
+        else:
+            tp = np.sum(np.logical_and(early_th <= thresh, correct_th > thresh))
+            tn = np.sum(nd_th <= thresh) + np.sum(early_th <= thresh)
+            fp = len(nd_th) + len(early_th) - tn
+        fn = np.sum(np.logical_and(early_th <= thresh, correct_th <= thresh))
+
+        accuracy, precision, tp_rate, fp_rate = self.get_metrics_from_stats(
+            tp, tn, fp, fn)
+        return accuracy, precision, tp_rate, fp_rate, tp, fp
 
     def get_shot_difficulty(self, preds, truths, disruptives):
         disruptives = np.array(disruptives)
         (d_early_thresholds, d_correct_thresholds, d_late_thresholds,
-         nd_thresholds) = self.get_threshold_arrays(preds, truths, disruptives)
+         nd_thresholds) = self.get_threshold_arrays(preds, truths, disruptives=disruptives)
         d_thresholds = np.maximum(d_early_thresholds, d_correct_thresholds)
         # rank shots by difficulty. rank 1 is assigned to lowest value, should
         # be highest difficulty
@@ -188,7 +227,7 @@ class PerformanceAnalyzer():
         # print(ret_facs)
         return ret_facs
 
-    def get_threshold_arrays(self, preds, truths, disruptives):
+    def get_threshold_arrays(self, preds, truths, disruptives=None):
         # num_d = np.sum(disruptives)
         # num_nd = np.sum(~disruptives)
         nd_thresholds = []
@@ -198,8 +237,11 @@ class PerformanceAnalyzer():
         for i in range(len(preds)):
             pred = 1.0*preds[i]
             truth = truths[i]
+            if disruptives is None:
+                is_disruptive = np.any(truth == 1)
+            else:
+                is_disruptive = disruptives[i]
             pred[:self.get_ignore_indices()] = -np.inf
-            is_disruptive = np.any(truth == 1)
             if is_disruptive:
                 max_acceptable = self.create_acceptable_region(truth, 'max')
                 min_acceptable = self.create_acceptable_region(truth, 'min')
@@ -265,7 +307,7 @@ class PerformanceAnalyzer():
                   'early: {} late: {} disr: {} nondisr: {}'.format(
                       earlies, lates, disr, nondisr))
 
-        correct, accuracy, fp_rate, missed, early_alarm_rate, thresh_quality = self.get_accuracy_and_fp_rate_from_stats(
+        correct, accuracy, fp_rate, missed, early_alarm_rate = self.get_accuracy_and_fp_rate_from_stats(
             TPs, FPs, FNs, TNs, earlies, lates, verbose)
         return correct, accuracy, fp_rate, missed, early_alarm_rate
 
@@ -304,7 +346,7 @@ class PerformanceAnalyzer():
         return TP, FP, FN, TN, early, late
 
     def get_ignore_indices(self):
-        return self.saved_conf['model']['ignore_timesteps']
+        return self.ignore_timesteps #self.saved_conf['model']['ignore_timesteps']
 
     def get_positives(self, predictions):
         indices = np.arange(len(predictions))
@@ -348,7 +390,6 @@ class PerformanceAnalyzer():
             fp_rate = 1.0*fp/nondisr
         correct = 1.0*(tp + tn)/total
 
-        thresh_quality = tp + early - fp
 
         if verbose:
             print('accuracy: {}'.format(accuracy))
@@ -357,7 +398,37 @@ class PerformanceAnalyzer():
             print('false positive rate: {}'.format(fp_rate))
             print('correct: {}'.format(correct))
 
-        return correct, accuracy, fp_rate, missed, early_alarm_rate, thresh_quality
+        return correct, accuracy, fp_rate, missed, early_alarm_rate
+    
+
+    def get_metrics_from_stats(self, tp, tn, fp, fn):
+        # accuracy = (tp + tn) / total(= tp + tn + fp + fn)
+        # precision = tp / positive_pred(= tp + fp)
+        # recall = tp / positive(= tp + fn)
+        # tp_rate = recall
+        # fp_rate = fp / negative(= fp + tn)
+
+        total = tp + tn + fp + fn
+        all_positives = tp + fn
+        all_negatives = fp + tn
+        positive_preds = tp + fp
+
+        accuracy = (tp + tn)/total
+        if positive_preds:
+            precision = tp / positive_preds
+        else:
+            precision = 0
+        if all_positives:
+            tp_rate = tp / all_positives
+        else:
+            tp_rate = 0
+        if all_negatives:
+            fp_rate = fp / all_negatives
+        else:
+            fp_rate = 0
+
+        return accuracy, precision, tp_rate, fp_rate
+
 
     def load_ith_file(self):
         results_files = os.listdir(self.results_dir)
@@ -1011,15 +1082,18 @@ class PerformanceAnalyzer():
 
     def get_roc_area(self, all_preds, all_truths, all_disruptive):
         (correct_range, accuracy_range, fp_range, missed_range,
-         early_alarm_range, best_thresh) = self.get_metrics_vs_p_thresh_custom(
+         early_alarm_range) = self.get_metrics_vs_p_thresh_custom(
              all_preds, all_truths, all_disruptive)
 
         return self.roc_from_missed_fp(missed_range, fp_range)
     
-    def get_roc_area_and_best_thresh(self, all_preds, all_truths, all_disruptive):
-        correct_range, accuracy_range, fp_range, missed_range, early_alarm_range, best_thresh = self.get_metrics_vs_p_thresh_custom(all_preds, all_truths, all_disruptive)
+    def get_roc_area_dh(self, all_preds, all_truths, early_pred_counts=True):
+        thresh_range, accuracy_range, precision_range, tp_rate_range, fp_rate_range, tp_range, fp_range = self.get_metrics_vs_p_thresh_dh(all_preds, all_truths, early_pred_counts=early_pred_counts)
 
-        return self.roc_from_missed_fp(missed_range, fp_range), best_thresh
+        return self.roc_from_tp_fp_rates(tp_rate_range, fp_rate_range)
 
     def roc_from_missed_fp(self, missed_range, fp_range):
         return -np.trapz(1 - missed_range, x=fp_range)
+
+    def roc_from_tp_fp_rates(self, tp_rate_range, fp_rate_range):
+        return -np.trapz(tp_rate_range, x=fp_rate_range)
