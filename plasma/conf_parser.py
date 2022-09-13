@@ -249,7 +249,7 @@ def parameters(config=None):
     params['paths']['processed_prepath'] = (
         base_path + '/processed_shots/' + 'signal_group_{}/'.format(h))
     # ensure shallow model has +1 -1 target.
-    if params['model']['shallow'] or params['target'] in ['hinge', 'focal']:
+    if params['model']['shallow'] or params['target'] in ['hinge', 'cross', 'focal', 'balanced_hinge', 'balanced_cross', 'balanced_focal']:
         params['data']['target'] = HingeTarget
     elif params['target'] == 'maxhinge':
         MaxHingeTarget.fac = params['data']['positive_example_penalty']

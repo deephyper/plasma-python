@@ -15,17 +15,19 @@ import matplotlib.pyplot as plt  # noqa
 class PerformanceAnalyzer():
     def __init__(self, results_dir=None, shots_dir=None, i=0, T_min_warn=None,
                  T_max_warn=None, ignore_timesteps=0, verbose=False, pred_ttd=False, conf=None):
-        self.T_min_warn = T_min_warn
-        self.T_max_warn = T_max_warn
-        self.ignore_timesteps = ignore_timesteps
-        # dt = conf['data']['dt']
-        # T_max_warn_def = int(round(conf['data']['T_warning']/dt))
-        # int(round(conf['data']['T_min_warn']/dt))
-        # T_min_warn_def = conf['data']['T_min_warn']
-        # if T_min_warn is None:
-        #     self.T_min_warn = T_min_warn_def
-        # if T_max_warn is None:
-        #     self.T_max_warn = T_max_warn_def
+        if conf is not None:
+            dt = conf['data']['dt']
+            if T_min_warn is None:
+                self.T_min_warn = conf['data']['T_min_warn']
+            if T_max_warn is None:
+                self.T_max_warn = int(round(conf['data']['T_warning']/dt))
+            self.saved_conf = conf
+            self.conf = conf
+            self.ignore_timesteps = conf['model']['ignore_timesteps']
+        else:
+            self.T_min_warn = T_min_warn
+            self.T_max_warn = T_max_warn
+            self.ignore_timesteps = ignore_timesteps
         if self.T_max_warn < self.T_min_warn:
             # computation of statistics is only correct if T_max_warn is larger
             # than T_min_warn
@@ -36,8 +38,6 @@ class PerformanceAnalyzer():
         self.shots_dir = shots_dir
         self.i = i
         self.pred_ttd = pred_ttd
-        # self.saved_conf = conf
-        # self.conf = conf
 
         self.pred_train = None
         self.truth_train = None
@@ -115,7 +115,8 @@ class PerformanceAnalyzer():
 
     def get_metrics_vs_p_thresh_fast(self, all_preds, all_truths,
                                      all_disruptive):
-        all_disruptive = np.array(all_disruptive)
+        if all_disruptive is not None:
+            all_disruptive = np.array(all_disruptive)
         early_th, correct_th, late_th, nd_th = self.get_threshold_arrays(
             all_preds, all_truths, disruptives=all_disruptive)
         if self.pred_train is not None:
@@ -346,7 +347,7 @@ class PerformanceAnalyzer():
         return TP, FP, FN, TN, early, late
 
     def get_ignore_indices(self):
-        return self.ignore_timesteps #self.saved_conf['model']['ignore_timesteps']
+        return self.ignore_timesteps
 
     def get_positives(self, predictions):
         indices = np.arange(len(predictions))
