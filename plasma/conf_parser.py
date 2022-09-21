@@ -13,7 +13,6 @@ import copy
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 base_params = {
-    # 'fs_path': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/dataset',
     'fs_path': '/lus/theta-fs0/projects/fusiondl_aesp/felker',
     'user_subdir': False,
     'fs_path_output': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/exp/run_function_tests/temp/',

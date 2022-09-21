@@ -154,9 +154,11 @@ class PerformanceAnalyzer():
         fp_rate_range = np.zeros_like(p_thresh_range)
         tp_range = np.zeros_like(p_thresh_range)
         fp_range = np.zeros_like(p_thresh_range)
+        tn_range = np.zeros_like(p_thresh_range)
+        fn_range = np.zeros_like(p_thresh_range)
 
         for i, thresh in enumerate(p_thresh_range):
-            accuracy, precision, tp_rate, fp_rate, tp, fp = (
+            accuracy, precision, tp_rate, fp_rate, tp, fp, tn, fn = (
                 self.get_shot_prediction_metrics_from_threshold_arrays(
                     early_th, correct_th, nd_th, thresh, early_pred_counts=early_pred_counts))
             accuracy_range[i] = accuracy
@@ -165,8 +167,10 @@ class PerformanceAnalyzer():
             fp_rate_range[i] = fp_rate
             tp_range[i] = tp
             fp_range[i] = fp
+            tn_range[i] = tn
+            fn_range[i] = fn
 
-        return p_thresh_range, accuracy_range, precision_range, tp_rate_range, fp_rate_range, tp_range, fp_range
+        return p_thresh_range, accuracy_range, precision_range, tp_rate_range, fp_rate_range, tp_range, fp_range, tn_range, fn_range
 
     def get_shot_prediction_stats_from_threshold_arrays(
             self, early_th, correct_th, late_th, nd_th, thresh):
@@ -201,7 +205,7 @@ class PerformanceAnalyzer():
 
         accuracy, precision, tp_rate, fp_rate = self.get_metrics_from_stats(
             tp, tn, fp, fn)
-        return accuracy, precision, tp_rate, fp_rate, tp, fp
+        return accuracy, precision, tp_rate, fp_rate, tp, fp, tn, fn
 
     def get_shot_difficulty(self, preds, truths, disruptives):
         disruptives = np.array(disruptives)
