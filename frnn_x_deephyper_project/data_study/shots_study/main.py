@@ -206,9 +206,11 @@ def plot_shot_separated(shot, idx, suffix="png"):
     plt.clf()
 
 shot_list_train, shot_list_valid, shot_list_test = guarantee_preprocessed(conf)
-shot_list_test.sort()
 
-for i in range(min(100, len(shot_list_test))):
-    plot_shot_separated(shot_list_test[i], i, suffix="png")
-    plot_shot(shot_list_test[i], i, suffix="png")
-    plot_shot(shot_list_test[i], i, suffix="pdf")
+shot_list = shot_list_test
+shot_list.sort()
+end = 100
+for i in range(min(end, len(shot_list))):
+    plot_shot_separated(shot_list[i], i, suffix="png")
+    plot_shot(shot_list[i], i, suffix="png")
+    plot_shot(shot_list[i], i, suffix="pdf")
