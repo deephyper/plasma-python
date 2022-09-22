@@ -25,7 +25,9 @@ export PYTHONPATH=$PROJECT/repos/scalable-bo/build/dhenv/lib/python3.8/site-pack
 
 ```
 
-The ``#COBALT -O`` specifies the file's relative path in which are written the job's logs, be careful to create the according folders if any are in the path (for example here the folder ``logs/`` that I always create in ``jobs/``). The two other commands (``source`` and ``export``) refer to the ``conda`` environment build's location once it was created following the installation procedure. 
+The ``#COBALT -O`` specifies the file's relative path in which are written the job's logs, be careful to create the according folders if any are in the path (for example here the folder ``logs/`` that I always create in ``jobs/``). The two other commands (``source`` and ``export``) refer to the ``conda`` environment build's location once it was created following the installation procedure.
+
+- you can find an additional ``plots/`` for all the plot generating scripts that were not run on Theta, but in local after download of the specific data plotted.
 
 ## Original FRNN
 
