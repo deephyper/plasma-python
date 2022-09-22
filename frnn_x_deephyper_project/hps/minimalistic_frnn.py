@@ -630,26 +630,7 @@ def run(config: None):
     return objective
 
 
-
-best_conf = {
-    "batch_size": 128,
-    "dense_regularization": 0.6214372902,
-    "dense_size": 48,
-    "dropout_prob": 0.037944019,
-    "length": 136,
-    "loss": "balanced_cross",
-    "lr": 0.0002213755,
-    "lr_decay": 0.9864262309,
-    "momentum": 0.9806891836,
-    "num_conv_filters": 90,
-    "num_conv_layers": 1,
-    "num_epochs": 23,
-    "regularization": 0.0186959087,
-    "rnn_layers": 2,
-    "rnn_size": 121
-}
-
 if __name__ == '__main__':
     t = time.time()
-    objective = run(best_conf)
+    objective = run(baseline_conf)
     print(f"Objective: {objective} - Run duration : {time.time() - t:.2f}s.")

@@ -501,7 +501,7 @@ targets = {
 }
 
 
-def run(config: None):
+def run(config: None, results_path):
     try:
         clear_session()
 
@@ -545,9 +545,9 @@ def run(config: None):
                 lr *= lr_decay
             return lr
 
-        results_path = "/lus/grand/projects/datascience/jgouneau/deephyper/frnn/exp/training/results/top_80"
         lr_scheduler = tf.keras.callbacks.LearningRateScheduler(scheduler)
-        frnn_evaluator = FrnnEvaluatorCallback(model, loader, shot_list_train, shot_list_valid, f"top_{rank+1}", results_path, conf)
+        model_name = f"top_{rank+1}"
+        frnn_evaluator = FrnnEvaluatorCallback(model, loader, shot_list_train, shot_list_valid, model_name, results_path, conf)
 
         steps_per_epoch = loader.get_steps_per_epoch_bis(shot_list_train)
         validation_steps = loader.get_steps_per_epoch_bis(shot_list_valid)
@@ -591,10 +591,11 @@ def run(config: None):
     return objective
 
 if __name__ == '__main__':
-    path_to_top_80 = "configs/top_80.json"
-    with open(path_to_top_80, 'r') as file:
+    path_to_top_configs = "configs/top_80.json"
+    results_path = "/lus/grand/projects/datascience/jgouneau/deephyper/frnn/exp/training/results/top_80"
+    with open(path_to_top_configs, 'r') as file:
         topk_conf = json.load(file)
     t = time.time()
-    obj = run(topk_conf[rank])
+    obj = run(topk_conf[rank], results_path)
     print(f"[{rank}] result: {obj}")
     print(f"[{rank}] Run duration : {time.time() - t:.2f}s.")

@@ -1,7 +1,7 @@
 import pandas as pd
 
 
-path_to_results = "~/projects/grand/deephyper/frnn/exp/hps/results/minimalistic-frnn-DBO-async-qUCB-qUCB-16-8-42000-42/results.csv"
+path_to_results = "../hps/results/minimalistic-frnn-DBO-async-qUCB-qUCB-16-8-42000-42/results.csv"
 k = 80
 path_to_configs = f"configs/top_{k}.json"
 
