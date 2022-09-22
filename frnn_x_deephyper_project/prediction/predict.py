@@ -466,7 +466,7 @@ targets = {
 }
 
 
-def build_model_and_predict(subset, config=None, model_name=None, results_dir=""):
+def build_model_and_predict(subset, config=None, model_name=None, results_dir="../training/results"):
     try:
         clear_session()
 
@@ -492,7 +492,7 @@ def build_model_and_predict(subset, config=None, model_name=None, results_dir=""
         model = builder.build_model()
         # model.summary()
         if model_name is not None:
-            model.load_weights(f"../training/results/{results_dir}/model_weights/{model_name}.h5")
+            model.load_weights(f"{results_dir}/model_weights/{model_name}.h5")
 
         loss = targets[conf['target']]['loss']
         optimizer = builder.build_optimizer()
@@ -512,7 +512,7 @@ def build_model_and_predict(subset, config=None, model_name=None, results_dir=""
         y_prime, y_gold = None, None
     return y_prime, y_gold, auc, pred_time
 
-def make_top_predictions(top_configs_path, dataset, subset, begin=0, end=None):
+def make_top_predictions(top_configs_path, dataset, subset, group="top_models", training_results_dir="../training/results/top_80", begin=0, end=None):
     with open(top_configs_path, 'r') as file:
         configs = json.load(file)
     if end is None:
@@ -521,14 +521,14 @@ def make_top_predictions(top_configs_path, dataset, subset, begin=0, end=None):
     for k in range(begin, end):
         model = f"top_{k+1}"
         print(model)
-        y_prime, y_gold, auc, pred_time = build_model_and_predict(subset, config=configs[k], model_name=model, results_dir="top_80")
+        y_prime, y_gold, auc, pred_time = build_model_and_predict(subset, config=configs[k], model_name=model, results_dir=training_results_dir)
         for gold, true_gold in zip(y_gold, true_y_gold.values()):
             assert np.all(gold == true_gold)
-        np.savez(f"{dataset}/{subset}/top_models/{model}.npz", *y_prime)
+        np.savez(f"{dataset}/{subset}/{group}/{model}.npz", *y_prime)
 
         print(auc)
-        if os.path.exists(f"{dataset}/{subset}/top_models/specs.yaml"):
-            with open(f"{dataset}/{subset}/top_models/specs.yaml", 'r') as f:
+        if os.path.exists(f"{dataset}/{subset}/{group}/specs.yaml"):
+            with open(f"{dataset}/{subset}/{group}/specs.yaml", 'r') as f:
                 specs = yaml.safe_load(f)
         else:
             specs = None
@@ -538,15 +538,15 @@ def make_top_predictions(top_configs_path, dataset, subset, begin=0, end=None):
             auc=round(float(auc), 3),
             pred_time=round(pred_time, 2)
         )
-        with open(f"{dataset}/{subset}/top_models/specs.yaml", 'w') as f:
+        with open(f"{dataset}/{subset}/{group}/specs.yaml", 'w') as f:
             yaml.dump(specs, f)
     
-def make_baseline_predictions(baseline_config_path, dataset, subset):
+def make_baseline_predictions(baseline_config_path, dataset, subset, traing_results_dir="../training/results/baseline"):
     with open(baseline_config_path, 'r') as file:
         config = json.load(file)
     model = "baseline"
     print(model)
-    y_prime, y_gold, auc, pred_time = build_model_and_predict(subset, config=config, model_name=model)
+    y_prime, y_gold, auc, pred_time = build_model_and_predict(subset, config=config, model_name=model, results_dir=traing_results_dir)
     np.savez(f"{dataset}/{subset}/y_gold.npz", *y_gold)
     np.savez(f"{dataset}/{subset}/{model}.npz", *y_prime)
     if os.path.exists(f"{dataset}/{subset}/specs.yaml"):
@@ -562,41 +562,21 @@ def make_baseline_predictions(baseline_config_path, dataset, subset):
     )
     with open(f"{dataset}/{subset}/specs.yaml", 'w') as f:
         yaml.dump(specs, f)
-    pathlib.Path(f"{dataset}/{subset}/top_models").mkdir(parents=False, exist_ok=True)
 
-
-def make_random_predictions(config_path, dataset, subset):
-    with open(config_path, 'r') as file:
-        config = json.load(file)
-    model = "random"
-    print(model)
-    y_prime, y_gold, auc, pred_time = build_model_and_predict(subset, config=config)
-    np.savez(f"{dataset}/{subset}/y_gold.npz", *y_gold)
-    np.savez(f"{dataset}/{subset}/{model}.npz", *y_prime)
-    if os.path.exists(f"{dataset}/{subset}/specs.yaml"):
-        with open(f"{dataset}/{subset}/specs.yaml", 'r') as f:
-            specs = yaml.safe_load(f)
-    else:
-        specs = None
-    if specs is None:
-        specs = dict()
-    specs[model] = dict(
-        auc=round(float(auc), 3),
-        pred_time=round(pred_time, 2)
-    )
-    with open(f"{dataset}/{subset}/specs.yaml", 'w') as f:
-        yaml.dump(specs, f)
 
 if __name__ == '__main__':
     top_configs_path = "../training/configs/top_80.json"
+    top_training_results_dir = "../training/results/top_80"
+    group = "top_models"
+
     baseline_config_path = "../training/configs/baseline.json"
+    baseline_training_results_dir = "../training/results/baseline"
+
     dataset="predictions/d3d_2019"
     subset="test"
     predictor = "top"
 
     if predictor == "baseline":
-        make_baseline_predictions(baseline_config_path, dataset, subset)
-    elif predictor == "top":
-        make_top_predictions(top_configs_path, dataset, subset, begin=64, end=65)
-    else:
-        make_random_predictions(baseline_config_path, dataset, subset)
+        make_baseline_predictions(baseline_config_path, dataset, subset, training_results_dir=baseline_training_results_dir)
+    else: # predictor == "top":
+        make_top_predictions(top_configs_path, dataset, subset, group=group, training_results_dir=top_training_results_dir, begin=0, end=80)

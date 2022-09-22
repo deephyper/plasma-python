@@ -27,11 +27,41 @@ export PYTHONPATH=$PROJECT/repos/scalable-bo/build/dhenv/lib/python3.8/site-pack
 
 The ``#COBALT -O`` specifies the file's relative path in which are written the job's logs, be careful to create the according folders if any are in the path (for example here the folder ``logs/`` that I always create in ``jobs/``). The two other commands (``source`` and ``export``) refer to the ``conda`` environment build's location once it was created following the installation procedure. 
 
+## Original FRNN
+
+A word ont the scripts in the ``deephyper/plasma-python (tf2)`` repo that are used and were modified for this project.
+
+### Conf parser
+
+The ``plasma/conf_parser.py`` might be the most important one, as it is here that is defined the base configuration (that is modified depending on the config at hand during the HPS, training, or predictions), in which is specified the dataset used with these key values :
+
+```python
+base_params = {
+    'fs_path': '/lus/theta-fs0/projects/fusiondl_aesp/felker',
+    'fs_path_output': '/lus/grand/projects/datascience/jgouneau/deephyper/frnn/exp/run_function_tests/temp/',
+    'paths': {
+        'data': 'd3d_2019', # 'd3d_all', 'jet_0D', 'jet_1D'
+        'signal_prepath': ['/signal_data/', '/signal_data_new_nov2019/'], # ['/signal_data/']
+    ...
+```
+
+``fs_path`` is where the data is located, make sure you have access to this Kyle's folder.
+
+``fs_path_output`` is where some files generated the old FRNN pipeline, if you only use the ``minimalistic FRNN`` pipeline this folder shouldn't even be accessed, but just in case you can set it to some temp folder.
+
+``paths['data']`` specifies the dataset used.
+
+``paths['signal_prepath']`` specifies which data from the dataset is used, the ``'/signal_data_new_nov2019/'`` is only relevant for ``d3d_2019``, this is what allows to use all the data it has in addition to what's already in ``d3d_all``.
+
 ## Data Study
 
 We have two subfolders in here ; ``visualization`` and ``shots_study``.
 
+### Visualization
+
 ``visualization`` contains a script to generate UMAP and TSNE visualization of the datasets, but it wasn't really usefull. It uses the ground truth or the output of an ensemble's predictions (``ensemble/y_pred.npz``) or its results (TP, FP, etc. with a specified threshold) or its (``ensemble/uq/alea.npz``, ``ensemble/uq/epis.npz``, ``ensemble/uq/tota.npz``) to color the points. It wasn't a successful attempt so it is still in a state of raw code uneasy to use for which it would be a loss of time to enter the details.
+
+### Shots study
 
 ``shots_study`` is where we generate the inputs visualizations. First create a folder ``plots/`` in here, in which you can also create ``scalars`` and ``profiles``, everything happens at the end of the script (``l.210 -> l.216``) :
 
@@ -53,6 +83,8 @@ You can choose in which format to save it with the ``suffix`` argument.
 To run this script, execute ``qsub-gpu jobs/main.sh`` in the current folder.
 
 ## HPS
+
+### Problem
 
 The ``hp_problem`` is defined in the ``minimalistic_frnn`` benchmark from ``scalbo`` (``l.80->l.96``) (not the one given as example in ``hps/minimalistic_frnn.py``):
 
@@ -83,7 +115,9 @@ The allocated time for the training of each model is defined in seconds ``l.585`
 timeout_callback = TimeoutCallback(30*60)
 ```
 
-While the parameters of the search are defined in the submission script (the final one is ``jobs/minimalistic-frnn-DBO-async-qUCB-qUCB-16-8-42000-42.sh``) with ``scalbo``'s cli : 
+### Job
+
+The parameters of the search are defined in the submission script (the final one is ``jobs/minimalistic-frnn-DBO-async-qUCB-qUCB-16-8-42000-42.sh``) with ``scalbo``'s cli : 
 
 ```bash
 #COBALT -n 16
@@ -105,11 +139,15 @@ export search="DBO"
 
 The results are saved in ``export log_dir="results/$problem-$search-$sync_str-$acq_func-$strategy-$COBALT_JOBSIZE-$RANKS_PER_NODE-$timeout-$random_state"`` so make sure that you have a ``results/`` folder in the current folder.
 
+### Others
+
 There are other scripts with different parameters, as well as scripts to quickly test the search on 1 gpu or 1 node (``test_HPS_1_gpu.sh``, ``test_HPS_1.sh``) or even only the run function with the baseline (``test_base_run.sh``, to be more precise it executes what's in the ``__main__`` part of ``scalbo``'s ``minimalistic_frnn.py`` benchmark script).
 
 ## Training
 
 Once the HPO is done its results are in ``hps/results/minimalistic-frnn-DBO-async-qUCB-qUCB-16-8-42000-42/results.csv``.
+
+### Gather top k configs
 
 First execute (this can be done localy) the ``gather_top_k_configs.py`` script for which the key variables are defined at the beginning (``l.4->l.8``):
 
@@ -120,6 +158,8 @@ path_to_configs = f"configs/top_{k}.json"
 ```
 
 it will gather the top ``k`` results from ``path_to_results`` and save them in ``configs/top_'k'.json``  (in which we already have the baseline config).
+
+### Train top k
 
 To then perform the training of the top models gathered, it happens with the ``train_top_k.py`` script, which takes the top configs generated previously in ``path_to_top_configs`` an then simply reproduces the ``run()`` function with an added ``FrnnEvaluatorCallback`` whose role is to evaluate the model at each epoch, save the metrics evaluated in ``'results_path'/histories/'model_name'.json`` and save the model's weights in ``'results_path'/model_weights/'model_name'.h5`` if the ``valid_frnn_auc`` was improved. 
 
@@ -140,7 +180,11 @@ num_epochs = 128
 ```
 with the periodic evaluation of the model it is not necessary for the training to be finished by the end of the 12h job so this can be set to a very large value.
 
+### Train baseline
+
 To compare to the baseline it is also possible to run ``train_baseline.py`` (even though I left the results of this training in ``results/baseline/``) but it will take one node to train only one model, this can be improved. Also, just like for the top models' training, make sure you have the folders created for the ``FrnnEvaluatorCallback`` to checkpoint the baseline's training.
+
+### Buffer comparison
 
 There are also two other scripts, which don't checkpoint the training and run for only an hour on ``single-gpu``, to compare the gpu utilization of the two buffer methods o the baseline (ours ``train_baseline_buffer.py`` and the original one ``train_baseline_old_buffer.py``) ; the ``gpustat`` outputs are written in ``results/gpustat_buffer.txt`` and ``results/gpustat_old_buffer.txt`` respectively so make sure you have a ``results/`` folder in ``training/``. To get the gpu utilization from the generated gpustats file you can use this snippet with the correct ``"path/to/gpustat.txt"`` :
 
@@ -157,3 +201,68 @@ All these training scripts have their associated job submission script in ``jobs
 
 ## Prediction
 
+### Predict
+
+Once these models are trained the predictions can be made by submitting ``jobs/predict.sh``, for which parameters are defined in the corresponding script ``predict.py``, ``l.569->l.577``:
+
+```python
+top_configs_path = "../training/configs/top_80.json"
+top_training_results_dir = "../training/results/top_80"
+
+baseline_config_path = "../training/configs/baseline.json"
+baseline_training_results_dir = "../training/results/baseline"
+
+dataset="predictions/d3d_2019"
+subset="test"
+predictor = "top"
+```
+
+the ``config_paths`` specify where are defined the configurations of the different models, while the ``training_results_dir`` where the checkpoint of the models were saved during the training. ``subset`` specifies which subset we want predictions on, while ``dataset`` is just used to indicate the output folder, the data used for prediction depends like for the HPS on what's specified in the ``conf_parser.py``, which is currently on ``d3d_2019``. The predictions are saved in ``'dataset'/'subset'/('group'/)'model_name'.npz``, along with a ``specs.yaml`` in which are the specs of the model's prediction like the auc and the prediction time on the subset. Again make sure you have the corresponding folders created.
+
+``predictor`` is what's used to perform the top models' or the baseline's predictions, it is recommended to first execute the baseline because it will also generate a ``y_gold.npz`` that contains the corresponding true labels and that is used during top models' prediction to verify that the prediction made is on the same data (``l.525->l.526``):
+
+```python
+for gold, true_gold in zip(y_gold, true_y_gold.values()):
+    assert np.all(gold == true_gold)
+```
+
+The top models' predictions takes too long to be performed in a single 1 hour ``single-gpu`` job, which is why you can choose which portion of these models you want to get predictions from (``begin=0, end=79`` ``l.582``).
+
+### Main
+
+This is the big part, the parameters are defined right at the beginning (``l.11->l.30``):
+
+```python
+dataset = "d3d_2019"
+subset = "test"
+criteria = "valid"
+group = "top_models"
+top = 80
+method = "gradient" # "gradient", "caruana", "topk"
+methods_kwargs = dict(
+    topk=dict(
+        calibrator="balanced_sigmoid", # "base", "sigmoid", "balanced_sigmoid"
+        k=80,
+    ),
+    caruana=dict(
+        calibrator="balanced_sigmoid", # "base", "sigmoid", "balanced_sigmoid"
+        k=80,
+    ),
+    gradient=dict(
+        ensemble=list(range(top)),
+        keep_model_thresh=1e-06,
+    ),
+)
+```
+
+``dataset`` and ``subset`` specify the folder from which the predictions are taken, while ``criteria`` specifies on which subset the calibrators and ensemble constructors should have been trained.
+
+``group`` is the top models' group name, top is how many we want to load (in a descending ``criteria`` auc order).
+
+``method`` is the ensemble construction method used along with its associated ``method_kwargs``.
+
+``topk`` and ``caruana`` require ``sklearn`` calibrators of type ``method_kwargs['calibrator']`` to be trained on ``criteria`` for each model. ``caruana`` and ``gradient`` are also trained on ``criteria`` to save the model's list they keep (and also the $\alpha$, $\beta$, and $\gamma$ parameters for ``gradient``).
+
+In order to train calibrators/constructors on a specific subset, let's say ``valid``, you must first execute this script with ``subset = criteria = valid``. Once this is done you can use the trained calibrators/constructors on any other subset as long as ``criteria`` stays at ``valid``.
+
+This script will execute the method to build the associated ensemble's prediction (using existing saved calibrators/constructors parameters if any for the given ``criteria`` or training them), compute the ``stats``, ``auc``, ``balanced_loss``, ``uq``, and generate some plots. The plot generation is at the end of the script (``l.155->end``) ; first we have the ROC curve of ``baseline`` and ``best_model`` (you can also add the curve of the ensemble by uncommenting the lines ``l.56->l.62`` in ``utils/plots.py``), and then in order the ``baseline``, ``best_model``, and ``ensemble`` pred/uq plot for the ``num_shots`` first shots.

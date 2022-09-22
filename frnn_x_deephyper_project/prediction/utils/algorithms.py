@@ -190,7 +190,7 @@ def apply_caruana(loss, y_pred_models, y_true, k, dataset, subset, criteria, cal
     return ensemble
 
 
-def old_new_method(y_pred_models, y_true, keep_model_thresh=0):
+def gradient(y_pred_models, y_true, keep_model_thresh=0):
     disruptive = np.array([1 in t for t in y_true], dtype='int32')
     y_pred_models = np.concatenate(y_pred_models, axis=1)
     shape = y_pred_models.shape
@@ -261,7 +261,7 @@ def old_new_method(y_pred_models, y_true, keep_model_thresh=0):
     return params, ensemble
 
 
-def new_method(y_pred_models, y_true, keep_model_thresh=0):
+def test_other_gradient(y_pred_models, y_true):
     disruptive = np.array([1 in t for t in y_true], dtype='int32')
     y_pred_models = np.concatenate(y_pred_models, axis=1)
     shape = y_pred_models.shape
@@ -330,9 +330,9 @@ def new_method(y_pred_models, y_true, keep_model_thresh=0):
     return params
 
 
-def old_apply_calibration_ensemble(y_pred_models, y_true, dataset, subset, criteria, group, keep_models_thresh=0):
+def apply_calibration_ensemble(y_pred_models, y_true, dataset, subset, criteria, group, keep_models_thresh=0):
     M = y_pred_models[0].shape[0]
-    path = f"calibration/new_method/{dataset}/{criteria}/{group}.json"
+    path = f"calibration/gradient/{dataset}/{criteria}/{group}.json"
     if os.path.exists(path):
         with open(path,"r") as f:
             all_params = json.load(f)
@@ -342,7 +342,7 @@ def old_apply_calibration_ensemble(y_pred_models, y_true, dataset, subset, crite
         params = all_params[f"{M}"]['params']
         ensemble = all_params[f"{M}"]['ensemble']
     elif subset == criteria:
-        params, ensemble = new_method(y_pred_models, y_true, keep_model_thresh=keep_models_thresh)
+        params, ensemble = gradient(y_pred_models, y_true, keep_model_thresh=keep_models_thresh)
         all_params[f"{M}"] = dict(
             params=params,
             ensemble=ensemble
@@ -360,7 +360,7 @@ def old_apply_calibration_ensemble(y_pred_models, y_true, dataset, subset, crite
     return y_pred_models, gammas, ensemble
 
 
-def apply_calibration_ensemble(y_pred_models, y_true, dataset, subset, criteria, group):
+def test_apply_calibration_ensemble(y_pred_models, y_true, dataset, subset, criteria, group):
     M = y_pred_models[0].shape[0]
     path = f"calibration/new_method/{dataset}/{criteria}/{group}.json"
     if os.path.exists(path):
@@ -369,7 +369,7 @@ def apply_calibration_ensemble(y_pred_models, y_true, dataset, subset, criteria,
     else:
         all_params = dict()
     if subset == criteria:
-        params = new_method(y_pred_models, y_true)
+        params = test_other_gradient(y_pred_models, y_true)
         all_params[f"{M}"] = params
         with open(path, "w") as f:
             json.dump(all_params, f)

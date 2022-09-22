@@ -590,12 +590,13 @@ def run(config: None, results_path, model_name):
     return objective
 
 if __name__ == '__main__':
-    path_to_baseline = "configs/baseline.json"
-    results_path = "results"
-    model_name = "baseline"
-    with open(path_to_baseline, 'r') as file:
-        baseline = json.load(file)
-    t = time.time()
-    obj = run(baseline, results_path, model_name)
-    print(f"result: {obj}")
-    print(f"Run duration : {time.time() - t:.2f}s.")
+    if rank == 0:
+        path_to_baseline = "configs/baseline.json"
+        results_path = "results/baseline"
+        model_name = "baseline"
+        with open(path_to_baseline, 'r') as file:
+            baseline = json.load(file)
+        t = time.time()
+        obj = run(baseline, results_path, model_name)
+        print(f"result: {obj}")
+        print(f"Run duration : {time.time() - t:.2f}s.")
