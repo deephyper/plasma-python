@@ -172,7 +172,7 @@ def greedy_caruana(loss, y_true, y_pred_models, k):
 
 
 def apply_caruana(loss, y_pred_models, y_true, k, dataset, subset, criteria, calibrator, group):
-    path = f"calibration/caruana_ensembles/{dataset}/{criteria}/{group}/ensembles_{calibrator}.json"
+    path = f"calibration/caruana/{dataset}/{criteria}/{group}/ensembles_{calibrator}.json"
     if os.path.exists(path):
         with open(path,"r") as f:
             ensembles = json.load(f)
