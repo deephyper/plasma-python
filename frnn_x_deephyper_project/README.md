@@ -121,30 +121,19 @@ path_to_configs = f"configs/top_{k}.json"
 
 it will gather the top ``k`` results from ``path_to_results`` and save them in ``configs/top_'k'.json``  (in which we already have the baseline config).
 
-To then perform the training of the top models gathered, it happens with the ``train_top_k.py`` script, which takes the top configs generated previously in ``path_to_top_configs`` (``l.594``) :
+To then perform the training of the top models gathered, it happens with the ``train_top_k.py`` script, which takes the top configs generated previously in ``path_to_top_configs`` an then simply reproduces the ``run()`` function with an added ``FrnnEvaluatorCallback`` whose role is to evaluate the model at each epoch, save the metrics evaluated in ``'results_path'/histories/'model_name'.json`` and save the model's weights in ``'results_path'/model_weights/'model_name'.h5`` if the ``valid_frnn_auc`` was improved. 
+
+All the key variables are defined ``l.593->l.595`` :
 
 ```python
 path_to_top_configs = "configs/top_80.json"
-```
-
-an then simply reproduces the ``run()`` function with an added ``FrnnEvaluatorCallback`` whose role is to evaluate the model at each epoch, save the metrics evaluated in ``'results_path'/histories/'model_name'.json`` and save the model's weights in ``'results_path'/model_weights/'model_name'.h5`` if the ``valid_frnn_auc`` was improved. 
-
-``results_path`` is defined ``l.595``:
-
-```python
 results_path = "results/top_80"
-```
-so make sure you have this ``results_path`` folder created in ``training/``
-
-Also because of the way the ``FrnnEvaluatorCallback`` checkpoints the model, make sure you have both a ``histories/`` and a ``model_weights/`` folders in this ``results_path`` folder.
-
-``model_name`` is defined ``l.549``:
-
-```python
 model_name = f"top_{rank+1}"
 ```
 
-The number of epochs during which to run the training is defined ``l.556``:
+Make sure you have the ``results_path`` folder created in ``training/``. Also because of the way the ``FrnnEvaluatorCallback`` checkpoints the model, make sure you have both a ``histories/`` and a ``model_weights/`` folders in this ``results_path`` folder.
+
+The number of epochs during which to run the training is defined ``l.555``:
 
 ```python
 num_epochs = 128

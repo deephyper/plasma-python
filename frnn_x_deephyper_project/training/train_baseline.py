@@ -328,10 +328,56 @@ class DataHandler(object):
         return dataset
 
 
-class AdaptedFocalLoss(tf.losses.BinaryFocalCrossentropy):
+class HingeLoss(tf.losses.Hinge):
+    def set_class_weight(self, class_weight):
+        self._class_weight = class_weight
+
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        return super().__call__(y_true, y_pred, None)
+
+class CrossLoss(tf.losses.BinaryCrossentropy):
+    def set_class_weight(self, class_weight):
+        self._class_weight = class_weight
+
     def __call__(self, y_true, y_pred, sample_weight=None):
         y_true = tf.clip_by_value(y_true, 0, 1)
-        return super().__call__(y_true, y_pred, sample_weight)
+        return super().__call__(y_true, y_pred, None)
+
+class FocalLoss(tf.losses.BinaryFocalCrossentropy):
+    def set_class_weight(self, class_weight):
+        self._class_weight = class_weight
+
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        y_true = tf.clip_by_value(y_true, 0, 1)
+        return super().__call__(y_true, y_pred, None)
+
+class BalancedHingeLoss(tf.losses.Hinge):
+    def set_class_weight(self, class_weight):
+        self._class_weight = class_weight
+
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        sample_weight = (1-y_true)*self._class_weight[0] + y_true*self._class_weight[1]
+        return super().__call__(y_true, y_pred, sample_weight=sample_weight)
+
+class BalancedCrossLoss(tf.losses.BinaryCrossentropy):
+    def set_class_weight(self, class_weight):
+        self._class_weight = class_weight
+
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        # frnn y_true are either -1 or 1
+        y_true = tf.clip_by_value(y_true, 0, 1)
+        sample_weight = (1-y_true)*self._class_weight[0] + y_true*self._class_weight[1]
+        return super().__call__(y_true, y_pred, sample_weight=sample_weight)
+
+class BalancedFocalLoss(tf.losses.BinaryFocalCrossentropy):
+    def set_class_weight(self, class_weight):
+        self._class_weight = class_weight
+
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        # frnn y_true are either -1 or 1
+        y_true = tf.clip_by_value(y_true, 0, 1)
+        sample_weight = (1-y_true)*self._class_weight[0] + y_true*self._class_weight[1]
+        return super().__call__(y_true, y_pred, sample_weight=sample_weight)
 
 
 class AdaptedAUC(tf.keras.metrics.AUC):
@@ -429,17 +475,33 @@ class FrnnEvaluatorCallback(tf.keras.callbacks.Callback):
 
 targets = {
     'hinge': {
-        'loss': 'hinge',
+        'loss': HingeLoss(),
+        'activation': 'linear',
+    },
+    'cross': {
+        'loss': CrossLoss(from_logits=True),
         'activation': 'linear',
     },
     'focal': {
-        'loss': AdaptedFocalLoss(from_logits=True),
+        'loss': FocalLoss(from_logits=True),
         'activation': 'linear',
-    }
+    },
+    'balanced_hinge': {
+        'loss': BalancedHingeLoss(),
+        'activation': 'linear',
+    },
+    'balanced_cross': {
+        'loss': BalancedCrossLoss(from_logits=True),
+        'activation': 'linear',
+    },
+    'balanced_focal': {
+        'loss': BalancedFocalLoss(from_logits=True),
+        'activation': 'linear',
+    },
 }
 
 
-def run(config: None):
+def run(config: None, results_path, model_name):
     try:
         clear_session()
 
@@ -463,7 +525,17 @@ def run(config: None):
         model = builder.build_model()
         # model.summary()
 
+        signals, results, shot_lengths, disruptive = loader.get_signals_results_from_shotlist(shot_list_valid, prediction_mode=True)
+        N = len(disruptive)
+        n_p = np.sum(disruptive)
+        n_n = N - n_p
+        coeff_p = N/(2*n_p)
+        coeff_n = N/(2*n_n)
+        class_weight = {0: N/(coeff_n*2), 1: N/(coeff_p*2)}
+
         loss = targets[conf['target']]['loss']
+        loss.set_class_weight(class_weight)
+
         optimizer = builder.build_optimizer()
         model.compile(optimizer=optimizer, loss=loss) #, metrics=[AdaptedAUC(name="auc", from_logits=True)])
 
@@ -473,15 +545,14 @@ def run(config: None):
                 lr *= lr_decay
             return lr
 
-        results_path = f"/lus/grand/projects/datascience/jgouneau/deephyper/frnn/exp/training/results/final"
         lr_scheduler = tf.keras.callbacks.LearningRateScheduler(scheduler)
-        frnn_evaluator = FrnnEvaluatorCallback(model, loader, shot_list_train, shot_list_valid, "baseline", results_path, conf)
+        frnn_evaluator = FrnnEvaluatorCallback(model, loader, shot_list_train, shot_list_valid, model_name, results_path, conf)
 
         steps_per_epoch = loader.get_steps_per_epoch_bis(shot_list_train)
         validation_steps = loader.get_steps_per_epoch_bis(shot_list_valid)
 
         # train it
-        num_epochs = 84
+        num_epochs = 128
         history = model.fit(
             train_dataset,
             batch_size=conf['training']['batch_size'],
@@ -520,9 +591,11 @@ def run(config: None):
 
 if __name__ == '__main__':
     path_to_baseline = "configs/baseline.json"
+    results_path = "results"
+    model_name = "baseline"
     with open(path_to_baseline, 'r') as file:
         baseline = json.load(file)
     t = time.time()
-    obj = run(baseline[0])
-    print(f"[{rank}] result: {obj}")
-    print(f"[{rank}] Run duration : {time.time() - t:.2f}s.")
+    obj = run(baseline, results_path, model_name)
+    print(f"result: {obj}")
+    print(f"Run duration : {time.time() - t:.2f}s.")

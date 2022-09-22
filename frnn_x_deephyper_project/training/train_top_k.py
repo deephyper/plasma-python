@@ -328,7 +328,7 @@ class DataHandler(object):
         return dataset
 
 
-class HingeLoss(tf.losses.BinaryFocalCrossentropy):
+class HingeLoss(tf.losses.Hinge):
     def set_class_weight(self, class_weight):
         self._class_weight = class_weight
 
@@ -501,7 +501,7 @@ targets = {
 }
 
 
-def run(config: None, results_path):
+def run(config: None, results_path, model_name):
     try:
         clear_session()
 
@@ -546,7 +546,6 @@ def run(config: None, results_path):
             return lr
 
         lr_scheduler = tf.keras.callbacks.LearningRateScheduler(scheduler)
-        model_name = f"top_{rank+1}"
         frnn_evaluator = FrnnEvaluatorCallback(model, loader, shot_list_train, shot_list_valid, model_name, results_path, conf)
 
         steps_per_epoch = loader.get_steps_per_epoch_bis(shot_list_train)
@@ -592,10 +591,11 @@ def run(config: None, results_path):
 
 if __name__ == '__main__':
     path_to_top_configs = "configs/top_80.json"
-    results_path = "/lus/grand/projects/datascience/jgouneau/deephyper/frnn/exp/training/results/top_80"
+    results_path = "results/top_80"
+    model_name = f"top_{rank+1}"
     with open(path_to_top_configs, 'r') as file:
         topk_conf = json.load(file)
     t = time.time()
-    obj = run(topk_conf[rank], results_path)
+    obj = run(topk_conf[rank], results_path, model_name)
     print(f"[{rank}] result: {obj}")
     print(f"[{rank}] Run duration : {time.time() - t:.2f}s.")
