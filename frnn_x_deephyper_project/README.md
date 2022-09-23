@@ -290,6 +290,8 @@ Once this is done you can use the trained calibrators/constructors on any other 
 
 This script will execute the method to build the associated ensemble's prediction (using existing saved calibrators/constructors parameters if any for the given ``criteria`` or training them), compute the ``stats``, ``auc``, ``balanced_loss``, ``uq``, and generate some plots. The plot generation is at the end of the script (``l.155->end``) ; first we have the ROC curve of ``baseline`` and ``best_model`` (you can also add the curve of the ensemble by uncommenting the lines ``l.56->l.62`` in ``utils/plots.py``), and then in order the ``baseline``, ``best_model``, and ``ensemble`` pred/uq plots for the ``num_shots`` first shots.
 
+The UQ shots can be found in this [box](https://anl.box.com/s/bmcxvtautxq8cqf36fz2rj7z6ae06p3t) folder.
+
 ## Plots
 
 There are additional scripts that can be run in local (hence the ``.ipynb``) with the results of the corresponding step.
