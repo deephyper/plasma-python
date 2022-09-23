@@ -237,7 +237,7 @@ subset="test"
 predictor = "top"
 ```
 
-the ``config_paths`` specify where are defined the configurations of the different models, while the ``training_results_dir`` where the checkpoint of the models were saved during the training. ``subset`` specifies which subset we want predictions on, while ``dataset`` is just used to indicate the output folder, the data used for prediction depends like for the HPS on what's specified in the ``conf_parser.py``, which is currently on ``d3d_2019``. The predictions are saved in ``'dataset'/'subset'/('group'/)'model_name'.npz``, along with a ``specs.yaml`` in which are the specs of the model's prediction like the auc and the prediction time on the subset. Again make sure you have the corresponding folders created.
+the ``config_paths`` specify where are defined the configurations of the different models, while the ``training_results_dir`` where the checkpoint of the models were saved during the training. ``subset`` specifies which subset we want predictions on, while ``dataset`` is just used to indicate the output folder, the data used for prediction depends like for the HPS on what's specified in the ``conf_parser.py``, which is currently on ``d3d_2019``. The predictions are saved in ``predictions/'dataset'/'subset'/('group'/)'model_name'.npz``, along with a ``specs.yaml`` in which are the specs of the model's prediction like the auc and the prediction time on the subset. Again make sure you have the corresponding folders created.
 
 ``predictor`` is what's used to perform the top models' or the baseline's predictions, it is recommended to first execute the baseline because it will also generate a ``y_gold.npz`` that contains the corresponding true labels and that is used during top models' prediction to verify that the prediction made is on the same data (``l.525->l.526``):
 
@@ -284,7 +284,7 @@ methods_kwargs = dict(
 In order to train calibrators/constructors on a specific subset, let's say ``valid``, you must first execute this script with ``subset = criteria = valid``. Make sur you have a :
 
 - ``calibration/'method'/'dataset'/'criteria'/'group'`` folder (for ``caruana`` and ``gradient``)
-- ``calibration/calibrators/'dataset'/'criteria'/('group'/)method_kwargs['calibrator']`` folder for the ``group`` models and the baseline (for ``topk`` and ``caruana``).
+- ``calibration/calibrators/'dataset'/'criteria'/'group'/method_kwargs['calibrator']`` folder for the ``group`` models (not the baseline because it is not calibrated) (for ``topk`` and ``caruana``).
 
 Once this is done you can use the trained calibrators/constructors on any other subset as long as ``criteria`` stays at ``valid``.
 

@@ -328,7 +328,7 @@ class DataHandler(object):
         return dataset
 
 
-class HingeLoss(tf.losses.BinaryFocalCrossentropy):
+class HingeLoss(tf.losses.Hinge):
     def set_class_weight(self, class_weight):
         self._class_weight = class_weight
 
@@ -541,13 +541,16 @@ def make_top_predictions(top_configs_path, dataset, subset, group="top_models", 
         with open(f"{dataset}/{subset}/{group}/specs.yaml", 'w') as f:
             yaml.dump(specs, f)
     
-def make_baseline_predictions(baseline_config_path, dataset, subset, traing_results_dir="../training/results/baseline"):
+def make_baseline_predictions(baseline_config_path, dataset, subset, training_results_dir="../training/results/baseline"):
     with open(baseline_config_path, 'r') as file:
         config = json.load(file)
     model = "baseline"
     print(model)
-    y_prime, y_gold, auc, pred_time = build_model_and_predict(subset, config=config, model_name=model, results_dir=traing_results_dir)
-    np.savez(f"{dataset}/{subset}/y_gold.npz", *y_gold)
+    true_y_gold = np.load(f"{dataset}/{subset}/y_gold.npz")
+    y_prime, y_gold, auc, pred_time = build_model_and_predict(subset, config=config, model_name=model, results_dir=training_results_dir)
+    # np.savez(f"{dataset}/{subset}/y_gold.npz", *y_gold)
+    for gold, true_gold in zip(y_gold, true_y_gold.values()):
+        assert np.all(gold == true_gold)
     np.savez(f"{dataset}/{subset}/{model}.npz", *y_prime)
     if os.path.exists(f"{dataset}/{subset}/specs.yaml"):
         with open(f"{dataset}/{subset}/specs.yaml", 'r') as f:
